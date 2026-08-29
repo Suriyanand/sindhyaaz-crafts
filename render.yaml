@@ -2,14 +2,11 @@ services:
   - type: web
     name: sindhyaaz-crafts
     env: node
+    plan: free
     buildCommand: npm run build
     startCommand: npm start
     envVars:
       - key: DATABASE_PATH
-        value: /var/data/gift_shop.db
+        value: ./server/database/gift_shop.db
       - key: UPLOAD_DIR
-        value: /var/data/uploads
-    disk:
-      name: data-disk
-      mountPath: /var/data
-      sizeGB: 1
+        value: ./server/uploads
