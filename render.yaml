@@ -3,7 +3,8 @@ services:
     name: sindhyaaz-crafts
     env: node
     plan: free
-    buildCommand: npm run build
+    nodeVersion: 20.11.0
+    buildCommand: npm install
     startCommand: npm start
     envVars:
       - key: DATABASE_PATH
