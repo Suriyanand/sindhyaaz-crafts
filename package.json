@@ -1,0 +1,13 @@
+{
+  "name": "giftlux-gift-shop",
+  "version": "1.0.0",
+  "description": "Premium Gift Shop E-Commerce Website with Admin Panel",
+  "scripts": {
+    "server": "cd server && npm run dev",
+    "seed": "cd server && npm run seed",
+    "install:server": "cd server && npm install",
+    "start": "cd server && npm run dev"
+  },
+  "author": "",
+  "license": "ISC"
+}

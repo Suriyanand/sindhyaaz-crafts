@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sindhyaaz Crafts | Premium Handmade & Personalized Gifts</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="/css/index.css">
+</head>
+<body>
+    <!-- Announcement Bar -->
+    <div class="announcement-bar">
+        <div class="marquee">
+            <span>✨ Welcome to GiftLux! Enjoy Free Shipping on orders over ₹499 ✨ Custom Gifts Made With Love ❤️ ✨ Same Day Dispatch Available 🚀 ✨ Welcome to GiftLux! Enjoy Free Shipping on orders over ₹499 ✨</span>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="header" id="header">
+        <div class="container header-container">
+            <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Menu">
+                ☰
+            </button>
+            
+            <a href="#/" class="logo">
+                Sindhyaaz <span>🎁</span>
+            </a>
+
+            <!-- Desktop Navigation -->
+            <nav class="desktop-nav">
+                <a href="#/">Home</a>
+                <a href="#/category/personalized-gifts">Personalized</a>
+                <a href="#/category/photo-gifts">Photo Gifts</a>
+                <a href="#/category/mugs-bottles">Mugs & Bottles</a>
+                <a href="#/category/keychains">Keychains</a>
+                <a href="#/category/home-decor">Home Decor</a>
+                <a href="#/category/combo-sets">Combos</a>
+                <a href="#/category/return-gifts">Return Gifts</a>
+            </nav>
+            
+            <div class="search-container">
+                <input type="text" id="searchInput" class="search-input" placeholder="Search for gifts...">
+                <button class="search-btn" aria-label="Search">🔍</button>
+                <div class="search-suggestions" id="searchSuggestions"></div>
+            </div>
+            
+            <div class="header-actions">
+                <a href="#/cart" class="cart-icon" aria-label="Cart">
+                    🛍️
+                    <span class="cart-badge" id="cartBadge">0</span>
+                </a>
+            </div>
+        </div>
+        
+        <!-- Mobile Search (visible only on mobile) -->
+        <div class="mobile-search">
+            <div class="container">
+                <div class="search-container">
+                    <input type="text" id="mobileSearchInput" class="search-input" placeholder="Search for gifts...">
+                    <button class="search-btn" aria-label="Search">🔍</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Mobile Menu Overlay -->
+        <div class="mobile-menu-overlay" id="mobileMenuOverlay">
+            <div class="mobile-menu">
+                <div class="mobile-menu-header">
+                    <h3>Menu</h3>
+                    <button class="close-menu-btn" id="closeMenuBtn">✕</button>
+                </div>
+                <nav class="mobile-nav">
+                    <a href="#/">Home</a>
+                    <a href="#/category/personalized-gifts">Personalized Gifts</a>
+                    <a href="#/category/photo-gifts">Photo Gifts</a>
+                    <a href="#/category/mugs-bottles">Mugs & Bottles</a>
+                    <a href="#/category/keychains">Keychains</a>
+                    <a href="#/category/home-decor">Home Decor</a>
+                    <a href="#/category/combo-sets">Combo Sets</a>
+                    <a href="#/category/return-gifts">Return Gifts</a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area for SPA -->
+    <main id="app-container">
+        <!-- Views will be injected here by JS router -->
+        
+        <!-- View Templates (hidden by default) -->
+        <div id="view-home" class="view">
+            <!-- Hero Section -->
+            <section class="hero">
+                <div class="hero-bg">
+                    <div class="blob blob-1"></div>
+                    <div class="blob blob-2"></div>
+                    <div class="blob blob-3"></div>
+                </div>
+                <div class="container hero-container-split">
+                    <div class="hero-text-side">
+                        <div class="hero-badge-vip scroll-animate fade-up">🎁 #1 Handcrafted Gift Shop in India</div>
+                        <h1 class="hero-title scroll-animate fade-up" style="animation-delay: 0.1s">Unwrap Joy with Custom Gifts Made with Love ❤️</h1>
+                        <p class="hero-subtitle scroll-animate fade-up" style="animation-delay: 0.2s">Personalized resin creations, photo lamps, custom mugs, temperature bottles, and gorgeous return gift hampers handcrafted to perfection.</p>
+                        
+                        <div class="hero-btn-group scroll-animate fade-up" style="animation-delay: 0.3s">
+                            <a href="#/search" class="btn btn-primary hero-btn-premium">Explore Collection ✨</a>
+                            <a href="https://wa.me/918098587377?text=Hi%2C%20I%20want%20to%20inquire%20about%20custom%20gifts%20from%20Sindhyaaz%20Crafts" target="_blank" class="btn btn-outline hero-btn-wa">Inquire on WhatsApp 💬</a>
+                        </div>
+
+                        <!-- Mini Stats Bar -->
+                        <div class="hero-stats scroll-animate fade-up" style="animation-delay: 0.4s">
+                            <div class="stat-item">
+                                <span class="stat-number">10k+</span>
+                                <span class="stat-label">Happy Customers</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number">4.9★</span>
+                                <span class="stat-label">Top Rated</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number">100%</span>
+                                <span class="stat-label">Secure Order</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="hero-image-side scroll-animate scale-in" style="animation-delay: 0.2s">
+                        <!-- Luxury showcase frame -->
+                        <div class="showcase-frame">
+                            <div class="showcase-glow"></div>
+                            <!-- Showcase Carousel of Top Gift Mockups -->
+                            <div class="showcase-carousel">
+                                <img src="/uploads/resin-flower-clock.jpg" alt="Resin Flower Clock" class="showcase-img active">
+                                <img src="/uploads/moon-lamp-3d.jpg" alt="3D Moon Night Lamp" class="showcase-img">
+                                <img src="/uploads/anniversary-luxury-hamper.jpg" alt="Luxury Anniversary Gift Hamper" class="showcase-img">
+                                <img src="/uploads/temp-flask-bottle.jpg" alt="Temperature Bottle Flask" class="showcase-img">
+                            </div>
+                            
+                            <!-- Badges floating on showcase -->
+                            <div class="floating-badge fb-1">💖 Personalized</div>
+                            <div class="floating-badge fb-2">✨ Premium Quality</div>
+                            <div class="floating-badge fb-3">🌸 Handcrafted</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Categories -->
+            <section class="section categories-section">
+                <div class="container">
+                    <div class="categories-scroll">
+                        <a href="#/category/personalized-gifts" class="category-bubble">
+                            <div class="bubble-icon">✍️</div>
+                            <span>Personalized</span>
+                        </a>
+                        <a href="#/category/photo-gifts" class="category-bubble">
+                            <div class="bubble-icon">📸</div>
+                            <span>Photo Gifts</span>
+                        </a>
+                        <a href="#/category/mugs-bottles" class="category-bubble">
+                            <div class="bubble-icon">☕</div>
+                            <span>Mugs & Bottles</span>
+                        </a>
+                        <a href="#/category/keychains" class="category-bubble">
+                            <div class="bubble-icon">🔑</div>
+                            <span>Keychains</span>
+                        </a>
+                        <a href="#/category/home-decor" class="category-bubble">
+                            <div class="bubble-icon">🏠</div>
+                            <span>Home Decor</span>
+                        </a>
+                        <a href="#/category/combo-sets" class="category-bubble">
+                            <div class="bubble-icon">🎀</div>
+                            <span>Combo Sets</span>
+                        </a>
+                        <a href="#/category/return-gifts" class="category-bubble">
+                            <div class="bubble-icon">🎉</div>
+                            <span>Return Gifts</span>
+                        </a>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Trust Badges -->
+            <section class="section trust-section">
+                <div class="container trust-grid">
+                    <div class="trust-badge scroll-animate fade-up">
+                        <div class="trust-icon-wrapper ti-rocket">
+                            <span class="trust-emoji">🚀</span>
+                        </div>
+                        <h4>Fast Dispatch</h4>
+                        <p>Orders packaged and shipped within 24-48 hours with live express transit tracking.</p>
+                    </div>
+                    <div class="trust-badge scroll-animate fade-up" style="animation-delay: 0.1s">
+                        <div class="trust-icon-wrapper ti-palette">
+                            <span class="trust-emoji">🎨</span>
+                        </div>
+                        <h4>100% Customizable</h4>
+                        <p>Customize names, photos, shapes, and color tones to match your exact imagination.</p>
+                    </div>
+                    <div class="trust-badge scroll-animate fade-up" style="animation-delay: 0.2s">
+                        <div class="trust-icon-wrapper ti-lock">
+                            <span class="trust-emoji">🔒</span>
+                        </div>
+                        <h4>Secure Checkout</h4>
+                        <p>Encrypted payment pathways supporting secure UPI, card payments, and netbanking.</p>
+                    </div>
+                    <div class="trust-badge scroll-animate fade-up" style="animation-delay: 0.3s">
+                        <div class="trust-icon-wrapper ti-support">
+                            <span class="trust-emoji">📞</span>
+                        </div>
+                        <h4>Direct Support</h4>
+                        <p>Chat directly with our design artisans on WhatsApp to discuss and preview your custom order.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Featured Products -->
+            <section class="section">
+                <div class="container">
+                    <div class="section-header scroll-animate fade-up">
+                        <h2 class="section-title">Trending Gifts 🔥</h2>
+                    </div>
+                    <div class="product-grid" id="featuredProducts">
+                        <!-- Products will be injected here -->
+                        <div class="skeleton-grid">
+                            <div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>
+                            <div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>
+                            <div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Promotional Banner -->
+            <section class="promo-banner">
+                <div class="container promo-grid scroll-animate fade-up">
+                    <div class="promo-info">
+                        <span class="promo-tag">✨ Made with Love</span>
+                        <h2>Custom Handmade Gifts Crafted to Perfection ❤️</h2>
+                        <p>Turn your favorite photo memories, names, and special messages into beautiful keepsakes that your loved ones will cherish forever.</p>
+                        <div class="promo-features">
+                            <div class="feature-item">🌸 100% Handcrafted</div>
+                            <div class="feature-item">🚚 Express Delivery</div>
+                            <div class="feature-item">💝 Free Gift Wrapping</div>
+                        </div>
+                        <a href="#/search" class="btn btn-white">Explore Custom Collection</a>
+                    </div>
+                    <div class="promo-visual">
+                        <div class="box-3d">
+                            <span class="visual-emoji e-gift">🎁</span>
+                            <span class="visual-emoji e-heart">💖</span>
+                            <span class="visual-emoji e-sparkle">✨</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- New Arrivals -->
+            <section class="section">
+                <div class="container">
+                    <div class="section-header scroll-animate fade-up">
+                        <h2 class="section-title">New Arrivals ✨</h2>
+                    </div>
+                    <div class="product-grid" id="newArrivals">
+                        <!-- Products will be injected here -->
+                        <div class="skeleton-grid">
+                            <div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>
+                            <div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>
+                            <div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Testimonials -->
+            <section class="section testimonials-section">
+                <div class="container">
+                    <div class="section-header scroll-animate fade-up">
+                        <h2 class="section-title">Loved by Thousands 💖</h2>
+                    </div>
+                    <div class="testimonials-grid">
+                        <div class="testimonial-card scroll-animate fade-up">
+                            <div class="stars">⭐⭐⭐⭐⭐</div>
+                            <p class="review">"Absolutely beautiful! The personalized mug was exactly as I wanted. Fast delivery too!"</p>
+                            <h4 class="name">- Priya S.</h4>
+                        </div>
+                        <div class="testimonial-card scroll-animate fade-up" style="animation-delay: 0.1s">
+                            <div class="stars">⭐⭐⭐⭐⭐</div>
+                            <p class="review">"The premium packaging made the gift even more special. Highly recommended for couples."</p>
+                            <h4 class="name">- Rahul K.</h4>
+                        </div>
+                        <div class="testimonial-card scroll-animate fade-up" style="animation-delay: 0.2s">
+                            <div class="stars">⭐⭐⭐⭐⭐</div>
+                            <p class="review">"Cute and perfect finish. Customer support on WhatsApp was very helpful. Will buy again!"</p>
+                            <h4 class="name">- Ananya M.</h4>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Newsletter -->
+            <section class="section newsletter-section">
+                <div class="container newsletter-container scroll-animate scale-in">
+                    <h2>Get Exclusive Deals 💌</h2>
+                    <p>Join our newsletter for 10% off your first order!</p>
+                    <form class="newsletter-form" onsubmit="event.preventDefault(); alert('Subscribed!');">
+                        <input type="email" placeholder="Enter your email" required>
+                        <button type="submit" class="btn btn-primary">Subscribe</button>
+                    </form>
+                </div>
+            </section>
+        </div>
+
+        <div id="view-category" class="view">
+            <section class="page-header">
+                <div class="container">
+                    <h1 id="categoryTitle" class="page-title">Category Name</h1>
+                    <p id="categoryDesc" class="page-desc">Category Description</p>
+                </div>
+            </section>
+            <section class="section">
+                <div class="container">
+                    <div class="filter-bar">
+                        <span>Filter & Sort:</span>
+                        <select id="sortSelect">
+                            <option value="newest">Newest First</option>
+                            <option value="price_low">Price: Low to High</option>
+                            <option value="price_high">Price: High to Low</option>
+                        </select>
+                    </div>
+                    <div class="product-grid" id="categoryProducts">
+                        <!-- Category products injected here -->
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div id="view-product" class="view">
+            <!-- Product Detail injected here via JS -->
+            <div class="container" id="productDetailContainer"></div>
+            
+            <!-- Related Products -->
+            <section class="section">
+                <div class="container">
+                    <div class="section-header">
+                        <h2 class="section-title">You May Also Like 💕</h2>
+                    </div>
+                    <div class="product-grid" id="relatedProducts"></div>
+                </div>
+            </section>
+        </div>
+
+        <div id="view-cart" class="view">
+            <section class="page-header">
+                <div class="container">
+                    <h1 class="page-title">Your Cart 🛍️</h1>
+                </div>
+            </section>
+            <section class="section">
+                <div class="container">
+                    <div class="cart-layout" id="cartContainer">
+                        <!-- Cart items injected here -->
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div id="view-checkout" class="view">
+            <section class="page-header">
+                <div class="container">
+                    <h1 class="page-title">Checkout 🔒</h1>
+                </div>
+            </section>
+            <section class="section">
+                <div class="container">
+                    <div class="checkout-layout" id="checkoutContainer">
+                        <!-- Checkout form and summary injected here -->
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div id="view-search" class="view">
+            <section class="page-header">
+                <div class="container">
+                    <h1 class="page-title" id="searchTitle">Search Results</h1>
+                </div>
+            </section>
+            <section class="section">
+                <div class="container">
+                    <div class="product-grid" id="searchResults">
+                        <!-- Search results injected here -->
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container footer-grid">
+            <div class="footer-col">
+                <h3 class="footer-logo">Sindhyaaz Crafts <span>🎁</span></h3>
+                <p>Making moments special with premium, cute, and personalized gifts for everyone you love.</p>
+                <div class="social-icons">
+                    <a href="#">IG</a>
+                    <a href="#">FB</a>
+                    <a href="#">TW</a>
+                    <a href="#">YT</a>
+                </div>
+            </div>
+            <div class="footer-col">
+                <h4>Quick Links</h4>
+                <ul>
+                    <li><a href="#/search">Shop All</a></li>
+                    <li><a href="#/category/personalized">Personalized</a></li>
+                    <li><a href="#/category/combos">Combo Sets</a></li>
+                    <li><a href="#/">Track Order</a></li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h4>Customer Service</h4>
+                <ul>
+                    <li><a href="#/">FAQ</a></li>
+                    <li><a href="#/">Shipping Policy</a></li>
+                    <li><a href="#/">Return Policy</a></li>
+                    <li><a href="#/">Contact Us</a></li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h4>Contact Us</h4>
+                <ul class="contact-info">
+                    <li>📞 +91 8098587377</li>
+                    <li>💬 WhatsApp Support Available</li>
+                    <li>✉️ hello@giftlux.com</li>
+                    <li>📍 Bangalore, India</li>
+                </ul>
+            </div>
+        </div>
+        <div class="footer-bottom container">
+            <p>&copy; 2026 GiftLux. All rights reserved.</p>
+            <div class="payment-methods">
+                💳 Secure Payments via UPI, Cards & NetBanking
+            </div>
+        </div>
+    </footer>
+
+    <!-- WhatsApp Button -->
+    <a href="https://wa.me/918098587377" target="_blank" class="whatsapp-btn" aria-label="Chat on WhatsApp">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/></svg>
+    </a>
+
+    <!-- Mobile Bottom Nav -->
+    <nav class="mobile-bottom-nav">
+        <a href="#/" class="nav-item active">
+            <span class="nav-icon">🏠</span>
+            <span>Home</span>
+        </a>
+        <a href="#/search" class="nav-item">
+            <span class="nav-icon">🔍</span>
+            <span>Search</span>
+        </a>
+        <a href="#/cart" class="nav-item">
+            <span class="nav-icon">🛍️</span>
+            <span>Cart</span>
+        </a>
+        <a href="#/" class="nav-item" id="mobileMenuTrigger">
+            <span class="nav-icon">☰</span>
+            <span>Menu</span>
+        </a>
+    </nav>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Scripts -->
+    <script src="/js/app.js"></script>
+</body>
+</html>

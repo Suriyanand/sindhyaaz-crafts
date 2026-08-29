@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GiftLux Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container"></div>
+
+    <!-- Login View -->
+    <div id="login-view" class="view">
+        <div class="login-card">
+            <div class="login-header">
+                <h2>GiftLux Admin</h2>
+                <p>Login to manage your store</p>
+            </div>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- App View -->
+    <div id="app-view" class="view hidden">
+        
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>Sindhyaaz Admin</h2>
+                <button class="close-sidebar-btn" id="close-sidebar-btn">✕</button>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#dashboard" class="nav-item active" data-view="dashboard">
+                    <span class="icon">📊</span> Dashboard
+                </a>
+                <a href="#products" class="nav-item" data-view="products">
+                    <span class="icon">📦</span> Products
+                </a>
+                <a href="#categories" class="nav-item" data-view="categories">
+                    <span class="icon">📁</span> Categories
+                </a>
+                <a href="#orders" class="nav-item" data-view="orders">
+                    <span class="icon">🛒</span> Orders
+                </a>
+                <a href="#settings" class="nav-item" data-view="settings">
+                    <span class="icon">⚙️</span> Settings
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <a href="#" class="nav-item" id="logout-btn">
+                    <span class="icon">🚪</span> Logout
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            
+            <!-- Top Bar -->
+            <header class="top-bar">
+                <div class="top-bar-left">
+                    <button class="menu-btn" id="menu-btn">☰</button>
+                    <h1 id="page-title">Dashboard</h1>
+                </div>
+                <div class="top-bar-right">
+                    <button class="notification-btn">
+                        <span class="icon">🔔</span>
+                        <span class="badge">3</span>
+                    </button>
+                    <div class="admin-profile">
+                        <div class="avatar">A</div>
+                        <span class="admin-name">Admin</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Page Content -->
+            <div class="page-content" id="page-content">
+                
+                <!-- Dashboard View -->
+                <div id="dashboard-view" class="page-view">
+                    <div class="stats-grid" id="dashboard-stats">
+                        <!-- Stats rendered via JS -->
+                    </div>
+                    <div class="dashboard-sections">
+                        <div class="card recent-orders">
+                            <div class="card-header">
+                                <h3>Recent Orders</h3>
+                                <button class="btn btn-outline btn-sm" onclick="app.navigate('orders')">View All</button>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>Order#</th>
+                                            <th>Customer</th>
+                                            <th>Phone</th>
+                                            <th>Total</th>
+                                            <th>Status</th>
+                                            <th>Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="recent-orders-body">
+                                        <!-- Rendered via JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="card quick-actions">
+                            <div class="card-header">
+                                <h3>Quick Actions</h3>
+                            </div>
+                            <div class="action-buttons">
+                                <button class="btn btn-primary" onclick="app.navigate('product-form')">+ Add Product</button>
+                                <button class="btn btn-secondary" onclick="app.navigate('categories')">+ Add Category</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Products View -->
+                <div id="products-view" class="page-view hidden">
+                    <div class="page-header">
+                        <div class="page-actions-left">
+                            <input type="text" id="product-search" class="search-input" placeholder="Search products...">
+                            <select id="product-category-filter" class="filter-select">
+                                <option value="">All Categories</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="app.navigate('product-form')">+ Add Product</button>
+                    </div>
+                    <div class="card">
+                        <div class="table-responsive">
+                            <table class="table" id="products-table">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="select-all-products"></th>
+                                        <th>Image</th>
+                                        <th>Name</th>
+                                        <th>Category</th>
+                                        <th>Price</th>
+                                        <th>Stock</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="products-body">
+                                    <!-- Rendered via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="pagination" id="products-pagination">
+                            <!-- Rendered via JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Product Form View -->
+                <div id="product-form-view" class="page-view hidden">
+                    <div class="page-header">
+                        <button class="btn btn-outline" onclick="app.navigate('products')">← Back</button>
+                        <h2 id="product-form-title">Add Product</h2>
+                    </div>
+                    <div class="card">
+                        <form id="product-form">
+                            <input type="hidden" id="product-id">
+                            <div class="form-row">
+                                <div class="form-group half">
+                                    <label for="product-name">Name *</label>
+                                    <input type="text" id="product-name" required>
+                                </div>
+                                <div class="form-group half">
+                                    <label for="product-category">Category *</label>
+                                    <select id="product-category" required></select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="product-description">Description</label>
+                                <textarea id="product-description" rows="4"></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group third">
+                                    <label for="product-price">Price (₹) *</label>
+                                    <input type="number" id="product-price" step="0.01" required>
+                                </div>
+                                <div class="form-group third">
+                                    <label for="product-compare-price">Compare Price (₹)</label>
+                                    <input type="number" id="product-compare-price" step="0.01">
+                                </div>
+                                <div class="form-group third">
+                                    <label for="product-stock">Stock *</label>
+                                    <input type="number" id="product-stock" required>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group half">
+                                    <label for="product-badge">Badge</label>
+                                    <select id="product-badge">
+                                        <option value="">None</option>
+                                        <option value="Bestseller">Bestseller</option>
+                                        <option value="New">New</option>
+                                        <option value="Hot">Hot</option>
+                                        <option value="Limited">Limited</option>
+                                    </select>
+                                </div>
+                                <div class="form-group half toggle-group">
+                                    <label class="toggle-label">
+                                        <span>Featured</span>
+                                        <input type="checkbox" id="product-featured">
+                                        <span class="toggle-switch"></span>
+                                    </label>
+                                    <label class="toggle-label">
+                                        <span>Active</span>
+                                        <input type="checkbox" id="product-active" checked>
+                                        <span class="toggle-switch"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Images</label>
+                                <div class="upload-zone" id="image-upload-zone">
+                                    <p>Drag & drop images here or <span>browse</span></p>
+                                    <input type="file" id="image-upload-input" multiple accept="image/*" class="hidden">
+                                </div>
+                                <div class="image-preview-grid" id="image-preview-grid"></div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="btn btn-outline" onclick="app.navigate('products')">Cancel</button>
+                                <button type="submit" class="btn btn-primary">Save Product</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Categories View -->
+                <div id="categories-view" class="page-view hidden">
+                    <div class="page-header">
+                        <input type="text" id="category-search" class="search-input" placeholder="Search categories...">
+                        <button class="btn btn-primary" id="add-category-btn">+ Add Category</button>
+                    </div>
+                    <div class="categories-grid" id="categories-grid">
+                        <!-- Rendered via JS -->
+                    </div>
+                </div>
+
+                <!-- Orders View -->
+                <div id="orders-view" class="page-view hidden">
+                    <div class="page-header">
+                        <input type="text" id="order-search" class="search-input" placeholder="Search by Order# or Customer...">
+                    </div>
+                    <div class="card">
+                        <div class="tabs" id="order-tabs">
+                            <button class="tab active" data-status="">All</button>
+                            <button class="tab" data-status="pending">Pending</button>
+                            <button class="tab" data-status="confirmed">Confirmed</button>
+                            <button class="tab" data-status="shipped">Shipped</button>
+                            <button class="tab" data-status="delivered">Delivered</button>
+                            <button class="tab" data-status="cancelled">Cancelled</button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table" id="orders-table">
+                                <thead>
+                                    <tr>
+                                        <th>Order#</th>
+                                        <th>Customer</th>
+                                        <th>Phone</th>
+                                        <th>Items</th>
+                                        <th>Total</th>
+                                        <th>Status</th>
+                                        <th>Date</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="orders-body">
+                                    <!-- Rendered via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Order Detail Modal -->
+                <div class="modal overlay hidden" id="order-detail-modal">
+                    <div class="modal-card modal-lg">
+                        <div class="modal-header">
+                            <h3 id="order-detail-title">Order Details</h3>
+                            <button class="close-btn" onclick="app.closeOrderModal()">✕</button>
+                        </div>
+                        <div class="modal-body" id="order-detail-body">
+                            <!-- Rendered via JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings View -->
+                <div id="settings-view" class="page-view hidden">
+                    <div class="card">
+                        <form id="settings-form">
+                            <div class="form-row">
+                                <div class="form-group half">
+                                    <label for="setting-shop-name">Shop Name</label>
+                                    <input type="text" id="setting-shop-name" required>
+                                </div>
+                                <div class="form-group half">
+                                    <label for="setting-announcement">Announcement Text</label>
+                                    <input type="text" id="setting-announcement">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group third">
+                                    <label for="setting-whatsapp">WhatsApp Number</label>
+                                    <input type="text" id="setting-whatsapp">
+                                </div>
+                                <div class="form-group third">
+                                    <label for="setting-phone">Phone</label>
+                                    <input type="text" id="setting-phone">
+                                </div>
+                                <div class="form-group third">
+                                    <label for="setting-email">Email</label>
+                                    <input type="email" id="setting-email">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="setting-address">Address</label>
+                                <textarea id="setting-address" rows="3"></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group half">
+                                    <label for="setting-free-shipping">Free Shipping Threshold (₹)</label>
+                                    <input type="number" id="setting-free-shipping" step="0.01">
+                                </div>
+                                <div class="form-group half">
+                                    <label for="setting-min-order">Minimum Order Amount (₹)</label>
+                                    <input type="number" id="setting-min-order" step="0.01">
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">Save Settings</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Category Modal -->
+    <div class="modal overlay hidden" id="category-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 id="category-modal-title">Add Category</h3>
+                <button class="close-btn" onclick="app.closeCategoryModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <form id="category-form">
+                    <input type="hidden" id="category-id">
+                    <div class="form-group">
+                        <label for="category-name">Name *</label>
+                        <input type="text" id="category-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="category-description">Description</label>
+                        <textarea id="category-description" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Image</label>
+                        <input type="file" id="category-image-input" accept="image/*">
+                        <div id="category-image-preview" class="img-preview-box"></div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-outline" onclick="app.closeCategoryModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Category</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div class="modal overlay hidden" id="confirm-modal">
+        <div class="modal-card modal-sm">
+            <div class="modal-header">
+                <h3>Confirm</h3>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-message">Are you sure?</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" id="confirm-cancel">Cancel</button>
+                <button class="btn btn-danger" id="confirm-ok">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Spinner -->
+    <div class="spinner-overlay hidden" id="global-spinner">
+        <div class="spinner"></div>
+    </div>
+
+    <script src="js/admin.js"></script>
+</body>
+</html>
