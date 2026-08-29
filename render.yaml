@@ -3,10 +3,11 @@ services:
     name: sindhyaaz-crafts
     env: node
     plan: free
-    nodeVersion: 20.11.0
     buildCommand: npm install
     startCommand: npm start
     envVars:
+      - key: NODE_VERSION
+        value: 20.11.0
       - key: DATABASE_PATH
         value: ./server/database/gift_shop.db
       - key: UPLOAD_DIR
