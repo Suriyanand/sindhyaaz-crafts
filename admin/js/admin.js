@@ -1,5 +1,5 @@
-const API_BASE = 'http://localhost:3000/api';
-const UPLOADS_BASE = 'http://localhost:3000/uploads';
+const API_BASE = '/api';
+const UPLOADS_BASE = '/uploads';
 
 // Utility Functions
 const utils = {

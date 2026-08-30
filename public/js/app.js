@@ -1,12 +1,7 @@
 // Config & State
 const CONFIG = {
-    // Determine API URL based on where frontend is served
-    API_BASE: window.location.port === '3000' || window.location.hostname === 'localhost' && window.location.port === '' 
-        ? 'http://localhost:3000/api' 
-        : '/api',
-    UPLOADS_BASE: window.location.port === '3000' || window.location.hostname === 'localhost' && window.location.port === '' 
-        ? 'http://localhost:3000/uploads' 
-        : '/uploads',
+    API_BASE: '/api',
+    UPLOADS_BASE: '/uploads',
     CURRENCY: '₹'
 };
 
