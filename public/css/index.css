@@ -287,6 +287,21 @@ ul {
     gap: 4px;
 }
 
+.logo-img {
+    height: 48px;
+    width: auto;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.footer-logo-img {
+    height: 60px;
+    width: auto;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 10px;
+}
+
 .logo span {
     font-size: 1.2rem;
 }
