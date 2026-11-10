@@ -88,7 +88,7 @@ router.get('/:slug', (req, res) => {
 
 router.post('/', authenticateToken, (req, res) => {
     try {
-        const { name, description, price, compare_price, category_id, images, stock, is_featured, badge, has_variants, variants } = req.body;
+        const { name, description, price, compare_price, category_id, images, stock, is_featured, is_active, badge, has_variants, variants } = req.body;
         if (!name || price === undefined) {
             return res.status(400).json({ success: false, error: 'Name and price are required' });
         }
@@ -101,13 +101,13 @@ router.post('/', authenticateToken, (req, res) => {
         }
 
         const stmt = db.prepare(`
-            INSERT INTO products (name, slug, description, price, compare_price, category_id, images, stock, is_featured, badge, has_variants, variants)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO products (name, slug, description, price, compare_price, category_id, images, stock, is_featured, is_active, badge, has_variants, variants)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         
         const info = stmt.run(
             name, slug, description, price, compare_price || null, category_id || null, 
-            JSON.stringify(images || []), stock || 0, is_featured ? 1 : 0, badge || null, 
+            JSON.stringify(images || []), stock || 0, is_featured ? 1 : 0, is_active !== false ? 1 : 0, badge || null, 
             has_variants ? 1 : 0, JSON.stringify(variants || [])
         );
 

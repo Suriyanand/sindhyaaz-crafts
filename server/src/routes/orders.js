@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database');
-const { authenticateToken } = require('../middleware/auth');
+const jwt = require('jsonwebtoken');
+const { authenticateToken, JWT_SECRET } = require('../middleware/auth');
 
 function generateOrderNumber() {
     const date = new Date();
@@ -12,27 +13,71 @@ function generateOrderNumber() {
 
 router.post('/', (req, res) => {
     try {
-        const { customer_name, phone, email, address, city, state, pincode, items, subtotal, shipping, total, payment_id, payment_order_id, payment_status, notes } = req.body;
-        
+        let {
+            customer_name, phone, email, address, city, state, pincode,
+            items, subtotal, shipping, total, payment_id, payment_order_id,
+            payment_status, notes, customer, totalAmount, user_id
+        } = req.body;
+
+        // Support nested customer object from checkout form
+        if (customer && typeof customer === 'object') {
+            customer_name = customer_name || `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || customer.name;
+            phone = phone || customer.phone;
+            email = email || customer.email;
+            address = address || `${customer.address1 || customer.address || ''} ${customer.address2 || ''}`.trim();
+            city = city || customer.city;
+            state = state || customer.state;
+            pincode = pincode || customer.pincode;
+            notes = notes || customer.notes;
+        }
+
+        total = total !== undefined ? total : totalAmount;
+        if (subtotal === undefined && total !== undefined) {
+            subtotal = total - (shipping || 0);
+        }
+
+        // Try extracting user from optional authorization header
+        if (!user_id && req.headers['authorization']) {
+            try {
+                const token = req.headers['authorization'].split(' ')[1];
+                if (token) {
+                    const decoded = jwt.verify(token, JWT_SECRET);
+                    if (decoded && decoded.id) user_id = decoded.id;
+                }
+            } catch (e) {}
+        }
+
         if (!customer_name || !phone || !address || !pincode || !items || total === undefined) {
-            return res.status(400).json({ success: false, error: 'Missing required fields' });
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: customer_name, phone, address, pincode, items, and total are required'
+            });
         }
 
         const order_number = generateOrderNumber();
         
         const info = db.prepare(`
-            INSERT INTO orders (order_number, customer_name, phone, email, address, city, state, pincode, items, subtotal, shipping, total, payment_id, payment_order_id, payment_status, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO orders (order_number, customer_name, phone, email, address, city, state, pincode, items, subtotal, shipping, total, payment_id, payment_order_id, payment_status, notes, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
             order_number, customer_name, phone, email || null, address, city || null, state || null, pincode,
             typeof items === 'string' ? items : JSON.stringify(items),
-            subtotal || 0, shipping || 0, total, payment_id || null, payment_order_id || null, payment_status || 'pending', notes || null
+            subtotal || 0, shipping || 0, total, payment_id || null, payment_order_id || null, payment_status || 'pending', notes || null,
+            user_id || null
         );
 
-        res.json({ success: true, data: { id: info.lastInsertRowid, order_number } });
+        res.json({
+            success: true,
+            data: {
+                id: info.lastInsertRowid,
+                order_number,
+                total,
+                status: 'pending'
+            }
+        });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, error: 'Internal server error' });
+        console.error('Order creation error:', err);
+        res.status(500).json({ success: false, error: 'Internal server error while creating order' });
     }
 });
 

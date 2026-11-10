@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = 'giftlux_jwt_secret_2024';
+const JWT_SECRET = process.env.JWT_SECRET || 'sindhyaaz_jwt_secret_secure_key_2026';
 
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];

@@ -61,3 +61,15 @@ CREATE TABLE IF NOT EXISTS site_settings (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT,
+    phone TEXT,
+    avatar TEXT,
+    auth_provider TEXT DEFAULT 'local',
+    google_id TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);

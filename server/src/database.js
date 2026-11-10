@@ -17,4 +17,11 @@ if (fs.existsSync(schemaPath)) {
     db.exec(schema);
 }
 
+// Safely ensure migration columns exist
+try {
+    db.exec('ALTER TABLE orders ADD COLUMN user_id INTEGER');
+} catch (e) {
+    // Column already exists, safe to ignore
+}
+
 module.exports = db;
