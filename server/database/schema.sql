@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS orders (
     payment_order_id TEXT,
     payment_status TEXT DEFAULT 'pending',
     order_status TEXT DEFAULT 'pending',
+    tracking_number TEXT,
+    courier_name TEXT,
     notes TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );

@@ -53,7 +53,7 @@ const showToast = (message, type = 'success') => {
 
 // --- API Service ---
 const api = {
-    async fetch(endpoint, options = {}) {
+    async fetch(endpoint, options = {}, isRetry = false) {
         try {
             const headers = {
                 'Content-Type': 'application/json',
@@ -75,8 +75,16 @@ const api = {
             return json.data !== undefined ? json.data : json;
         } catch (error) {
             console.warn(`API call to ${endpoint} failed:`, error.message);
+            if (!isRetry && (error.message.includes('Failed to fetch') || error.message.includes('NetworkError'))) {
+                console.info('Server waking up, auto-retrying in 2.5s...');
+                await new Promise(r => setTimeout(r, 2500));
+                return await this.fetch(endpoint, options, true);
+            }
             return null;
         }
+    },
+    async getSettings() {
+        return await this.fetch('/settings');
     },
     async getProducts(params = '') {
         return await this.fetch(`/products${params ? '?' + params : ''}`);
@@ -102,10 +110,16 @@ const api = {
             body: JSON.stringify({ name, email, password, phone })
         });
     },
-    async googleLogin(name, email, google_id) {
+    async googleLogin(payload, optionalEmail, optionalGoogleId) {
+        let body;
+        if (typeof payload === 'object') {
+            body = payload;
+        } else {
+            body = { name: payload, email: optionalEmail, google_id: optionalGoogleId };
+        }
         return await this.fetch('/user/google-login', {
             method: 'POST',
-            body: JSON.stringify({ name, email, google_id })
+            body: JSON.stringify(body)
         });
     },
     async getUserOrders() {
@@ -587,6 +601,10 @@ const renderCheckout = () => {
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
 
+    const upiId = (state.settings && state.settings.upi_id) ? state.settings.upi_id : '8098587377@upi';
+    const upiPayUrl = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=Sindhyaaz%20Crafts&am=${total}&cu=INR&tn=Sindhyaaz%20Order`;
+    const upiQrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiPayUrl)}`;
+
     container.innerHTML = `
         <div class="checkout-form-container" style="background: white; padding: 28px; border-radius: var(--radius-md); box-shadow: var(--shadow-sm); border:1px solid var(--color-border);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
@@ -649,20 +667,63 @@ const renderCheckout = () => {
                 </div>
 
                 <h3 style="font-family:var(--font-heading); margin-bottom:16px;">Payment Method</h3>
-                <div style="border: 2px solid var(--color-primary); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 14px; background: rgba(232, 121, 160, 0.05);">
+                
+                <!-- Cash on Delivery Option -->
+                <div id="codOptionWrapper" style="border: 2px solid var(--color-primary); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 14px; background: rgba(232, 121, 160, 0.05); cursor: pointer;" onclick="document.getElementById('radioCod').click()">
                     <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight:600;">
-                        <input type="radio" name="payment_method" value="cod" checked style="accent-color:var(--color-primary); width:18px; height:18px;">
+                        <input type="radio" id="radioCod" name="payment_method" value="cod" checked onchange="window.togglePaymentMethod('cod')" style="accent-color:var(--color-primary); width:18px; height:18px;">
                         <span>Cash on Delivery (COD) 💵</span>
                     </label>
                     <p style="margin: 6px 0 0 30px; font-size:0.82rem; color:var(--color-text-muted);">Pay with cash upon delivery at your doorstep.</p>
                 </div>
 
-                <div style="border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 24px; background: white;">
+                <!-- UPI / Online Payment Option -->
+                <div id="onlineOptionWrapper" style="border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 24px; background: white; cursor: pointer;" onclick="document.getElementById('radioOnline').click()">
                     <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight:600;">
-                        <input type="radio" name="payment_method" value="online" style="accent-color:var(--color-primary); width:18px; height:18px;">
-                        <span>Pay via UPI / GPay / PhonePe / WhatsApp 📲</span>
+                        <input type="radio" id="radioOnline" name="payment_method" value="online" onchange="window.togglePaymentMethod('online')" style="accent-color:var(--color-primary); width:18px; height:18px;">
+                        <span>Pay via UPI / GPay / PhonePe / Paytm / QR 📲</span>
                     </label>
-                    <p style="margin: 6px 0 0 30px; font-size:0.82rem; color:var(--color-text-muted);">Direct UPI payment verification via WhatsApp upon order placement.</p>
+                    <p style="margin: 6px 0 0 30px; font-size:0.82rem; color:var(--color-text-muted);">Instant QR code, deep link for mobile apps, and instant receipt verification.</p>
+
+                    <!-- Interactive UPI Payment Widget (Hidden by default, shown when radio checked) -->
+                    <div id="upiDetailsBox" style="display:none; margin-top: 16px; padding: 18px; background: #fafafa; border: 1px dashed var(--color-primary); border-radius: var(--radius-sm); text-align: center;" onclick="event.stopPropagation()">
+                        <div style="display:inline-block; padding: 4px 14px; background: #eef2ff; color: #4338ca; border-radius: 20px; font-size: 0.8rem; font-weight: 700; margin-bottom: 12px;">
+                            ⚡ Instant UPI Payment (0% Fees)
+                        </div>
+                        <h4 style="margin: 0 0 8px 0; font-size: 1.1rem; color: var(--color-text-dark);">Scan QR to Pay ${formatPrice(total)}</h4>
+                        
+                        <!-- Dynamic QR Code -->
+                        <div style="display: flex; justify-content: center; margin: 12px 0;">
+                            <img src="${upiQrCodeUrl}" alt="UPI Payment QR" style="width: 180px; height: 180px; border: 4px solid white; border-radius: 8px; box-shadow: var(--shadow-sm);">
+                        </div>
+
+                        <!-- UPI ID with Copy Button -->
+                        <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;">
+                            <span style="font-size: 0.88rem; color: var(--color-text-muted);">Store UPI ID:</span>
+                            <strong style="font-family: monospace; font-size: 1rem; color: var(--color-text-dark); background: white; padding: 5px 10px; border-radius: 4px; border: 1px solid var(--color-border);">${upiId}</strong>
+                            <button type="button" class="btn btn-outline" onclick="window.copyUpiId('${upiId}')" style="padding: 4px 10px; font-size: 0.8rem;">
+                                📋 Copy
+                            </button>
+                        </div>
+
+                        <!-- Mobile Intent Link -->
+                        <div style="margin-bottom: 14px;">
+                            <a href="${upiPayUrl}" class="btn btn-primary w-100" style="background: linear-gradient(135deg, #5f259f, #7b2cbf); border: none; padding: 12px; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; color: white;">
+                                📲 Open GPay / PhonePe / Paytm to Pay ${formatPrice(total)}
+                            </a>
+                        </div>
+
+                        <!-- UTR / Reference Number Input -->
+                        <div style="text-align: left; background: white; padding: 14px; border-radius: var(--radius-sm); border: 1px solid var(--color-border);">
+                            <label style="display:block; font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; color: var(--color-text-dark);">
+                                Enter 12-Digit UPI Ref / UTR Number *
+                            </label>
+                            <input type="text" id="checkoutUtr" name="upi_utr" placeholder="e.g. 423588991234 (from payment receipt)" maxlength="24" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 4px; font-family: monospace; font-size: 0.95rem;">
+                            <p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 4px 0 0 0;">
+                                💡 After paying, find the 12-digit UTR/UPI Ref in your payment history and enter it here for instant confirmation.
+                            </p>
+                        </div>
+                    </div>
                 </div>
 
                 <div style="margin-bottom:20px;">
@@ -715,6 +776,51 @@ const renderCheckout = () => {
     `;
 };
 
+// Payment method toggle handler
+window.togglePaymentMethod = (method) => {
+    const upiBox = document.getElementById('upiDetailsBox');
+    const codWrapper = document.getElementById('codOptionWrapper');
+    const onlineWrapper = document.getElementById('onlineOptionWrapper');
+    const submitBtn = document.getElementById('submitOrderBtn');
+
+    if (method === 'online') {
+        if (upiBox) upiBox.style.display = 'block';
+        if (codWrapper) {
+            codWrapper.style.border = '1px solid var(--color-border)';
+            codWrapper.style.background = 'white';
+        }
+        if (onlineWrapper) {
+            onlineWrapper.style.border = '2px solid var(--color-primary)';
+            onlineWrapper.style.background = 'rgba(232, 121, 160, 0.05)';
+        }
+        if (submitBtn) submitBtn.innerHTML = 'Confirm UPI Payment & Place Order 🔒';
+    } else {
+        if (upiBox) upiBox.style.display = 'none';
+        if (codWrapper) {
+            codWrapper.style.border = '2px solid var(--color-primary)';
+            codWrapper.style.background = 'rgba(232, 121, 160, 0.05)';
+        }
+        if (onlineWrapper) {
+            onlineWrapper.style.border = '1px solid var(--color-border)';
+            onlineWrapper.style.background = 'white';
+        }
+        if (submitBtn) submitBtn.innerHTML = 'Place Order (Cash on Delivery) 🔒';
+    }
+};
+
+window.copyUpiId = (id) => {
+    const text = id || (state.settings?.upi_id || '8098587377@upi');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+            showToast('UPI ID copied to clipboard! 📋');
+        }).catch(() => {
+            prompt('Copy Store UPI ID:', text);
+        });
+    } else {
+        prompt('Copy Store UPI ID:', text);
+    }
+};
+
 // Checkout Order Submission
 window.handlePlaceOrder = async (e) => {
     e.preventDefault();
@@ -727,6 +833,19 @@ window.handlePlaceOrder = async (e) => {
     const form = e.target;
     const formData = new FormData(form);
     const data = Object.fromEntries(formData.entries());
+
+    const isOnline = data.payment_method === 'online';
+    const utr = (data.upi_utr || document.getElementById('checkoutUtr')?.value || '').trim();
+
+    if (isOnline && !utr) {
+        const proceed = confirm("Have you sent the payment via UPI? Please enter the 12-digit UPI Reference / UTR number for faster verification. Click OK to proceed anyway and send your receipt screenshot on WhatsApp.");
+        if (!proceed) {
+            btn.disabled = false;
+            btn.innerHTML = 'Confirm UPI Payment & Place Order 🔒';
+            document.getElementById('checkoutUtr')?.focus();
+            return;
+        }
+    }
 
     const subtotal = cartManager.getTotal();
     const shipping = subtotal >= CONFIG.FREE_SHIPPING_THRESHOLD ? 0 : 50;
@@ -745,7 +864,8 @@ window.handlePlaceOrder = async (e) => {
         subtotal,
         shipping,
         total,
-        payment_status: data.payment_method === 'cod' ? 'pending (cod)' : 'pending (online)'
+        payment_id: utr || null,
+        payment_status: isOnline ? (utr ? 'paid (UPI verification)' : 'pending (online)') : 'pending (cod)'
     };
 
     const res = await api.createOrder(payload);
@@ -773,6 +893,24 @@ window.handlePlaceOrder = async (e) => {
                 <p style="font-size: 1.15rem; color: var(--color-primary); font-weight: 700; margin-bottom: 12px;">
                     Order Number: <span style="background:var(--color-bg); padding:4px 12px; border-radius:var(--radius-sm);">${orderNumber}</span>
                 </p>
+                
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:var(--radius-sm); padding:16px; margin: 16px auto; max-width: 480px; text-align: left; font-size:0.92rem;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+                        <span style="color:var(--color-text-muted);">Payment Method:</span>
+                        <strong>${payload.payment_id ? 'UPI / Online Transfer 📲' : 'Cash on Delivery 💵'}</strong>
+                    </div>
+                    ${payload.payment_id ? `
+                        <div style="display:flex; justify-content:space-between; margin-bottom: 8px;">
+                            <span style="color:var(--color-text-muted);">UPI Ref / UTR:</span>
+                            <strong style="font-family:monospace; color:#4338ca;">${payload.payment_id}</strong>
+                        </div>
+                    ` : ''}
+                    <div style="display:flex; justify-content:space-between;">
+                        <span style="color:var(--color-text-muted);">Current Status:</span>
+                        <span class="badge-pending" style="display:inline-block; padding:2px 8px; border-radius:4px; font-weight:600; font-size:0.85rem;">Order Placed 📝</span>
+                    </div>
+                </div>
+
                 <p style="color: var(--color-text-muted); max-width: 500px; margin: 0 auto 28px; line-height: 1.6;">
                     Thank you <strong>${payload.customer_name}</strong>! We have received your order of <strong>${formatPrice(total)}</strong>. Our artisan will process it right away. You will receive updates via WhatsApp/SMS!
                 </p>
@@ -781,7 +919,7 @@ window.handlePlaceOrder = async (e) => {
                     <button type="button" class="btn btn-primary" onclick="window.openTrackOrderModal('${orderNumber}')" style="padding:12px 24px;">
                         Track Order 📦
                     </button>
-                    <a href="https://wa.me/${CONFIG.WHATSAPP_NUMBER}?text=Hi%20Sindhyaaz%20Crafts!%20I%20just%20placed%20order%20*${orderNumber}*%20for%20₹${total}." target="_blank" class="btn btn-outline" style="border-color:#25D366; color:#25D366; padding:12px 24px;">
+                    <a href="https://wa.me/${CONFIG.WHATSAPP_NUMBER}?text=Hi%20Sindhyaaz%20Crafts!%20I%20just%20placed%20order%20*${orderNumber}*%20for%20₹${total}${payload.payment_id ? `%20via%20UPI%20(UTR:%20${payload.payment_id})` : ''}." target="_blank" class="btn btn-outline" style="border-color:#25D366; color:#25D366; padding:12px 24px;">
                         WhatsApp Confirmation 💬
                     </a>
                     <a href="#/" class="btn btn-white" style="padding:12px 24px;">
@@ -875,6 +1013,7 @@ window.openUserModal = () => {
         if (profileContainer) profileContainer.style.display = 'none';
         window.switchAuthTab('login');
     }
+    setTimeout(() => { window.initGoogleIdentity(); }, 50);
 };
 
 window.closeUserModal = () => {
@@ -902,6 +1041,7 @@ window.switchAuthTab = (tab) => {
         if (registerForm) registerForm.style.display = 'block';
         if (title) title.textContent = 'Join Sindhyaaz Crafts 🌸';
     }
+    setTimeout(() => { window.initGoogleIdentity(); }, 50);
 };
 
 window.handleUserLogin = async (e) => {
@@ -944,26 +1084,107 @@ window.handleUserRegister = async (e) => {
     }
 };
 
-window.handleGoogleLogin = async () => {
-    // Interactive Google Sign-In prompt
-    const simulatedEmail = prompt("Enter your Google Email to sign in with Google:", state.user?.email || "customer@gmail.com");
-    if (!simulatedEmail || !simulatedEmail.includes('@')) return;
+// Official Google Identity Services Credential Handler
+window.handleGoogleCredentialResponse = async (response) => {
+    try {
+        if (!response || !response.credential) {
+            showToast('Google Sign-In failed to return credentials.', 'error');
+            return;
+        }
 
-    const simulatedName = simulatedEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    const res = await api.googleLogin(simulatedName, simulatedEmail, `google_${Date.now()}`);
+        // Decode Google JWT payload safely
+        const base64Url = response.credential.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+        const userObj = JSON.parse(jsonPayload);
 
-    if (res && res.token) {
-        state.token = res.token;
-        state.user = res.user;
-        localStorage.setItem('sindhyaaz_token', res.token);
-        localStorage.setItem('sindhyaaz_user', JSON.stringify(res.user));
-        updateAuthUI();
-        window.closeUserModal();
-        showToast(`Signed in with Google as ${res.user.name}! 🚀`);
-    } else {
-        showToast('Google sign-in could not be completed.', 'error');
+        const res = await api.googleLogin({
+            name: userObj.name,
+            email: userObj.email,
+            google_id: userObj.sub,
+            avatar: userObj.picture,
+            credential: response.credential
+        });
+
+        if (res && res.token) {
+            state.token = res.token;
+            state.user = res.user;
+            localStorage.setItem('sindhyaaz_token', res.token);
+            localStorage.setItem('sindhyaaz_user', JSON.stringify(res.user));
+            updateAuthUI();
+            window.closeUserModal();
+            showToast(`Signed in as ${res.user.name}! 🌟`);
+        } else {
+            showToast('Google authentication failed on server.', 'error');
+        }
+    } catch (err) {
+        console.error('Google Sign-In error:', err);
+        showToast('Google Sign-In error. Please try again.', 'error');
     }
 };
+
+// Official Google Identity Services SDK Initializer
+window.initGoogleIdentity = () => {
+    if (window.google && window.google.accounts && window.google.accounts.id) {
+        const clientId = state.settings?.google_client_id;
+        if (clientId) {
+            try {
+                google.accounts.id.initialize({
+                    client_id: clientId,
+                    callback: window.handleGoogleCredentialResponse,
+                    auto_select: false,
+                    cancel_on_tap_outside: true
+                });
+
+                const loginBtn = document.getElementById('googleBtnLogin');
+                if (loginBtn) {
+                    loginBtn.innerHTML = '';
+                    google.accounts.id.renderButton(loginBtn, {
+                        theme: 'outline',
+                        size: 'large',
+                        width: '320',
+                        text: 'continue_with',
+                        shape: 'rectangular',
+                        logo_alignment: 'left'
+                    });
+                    const fallbackLogin = document.getElementById('fallbackGoogleBtnLogin');
+                    if (fallbackLogin) fallbackLogin.style.display = 'none';
+                }
+
+                const regBtn = document.getElementById('googleBtnRegister');
+                if (regBtn) {
+                    regBtn.innerHTML = '';
+                    google.accounts.id.renderButton(regBtn, {
+                        theme: 'outline',
+                        size: 'large',
+                        width: '320',
+                        text: 'signup_with',
+                        shape: 'rectangular',
+                        logo_alignment: 'left'
+                    });
+                    const fallbackReg = document.getElementById('fallbackGoogleBtnRegister');
+                    if (fallbackReg) fallbackReg.style.display = 'none';
+                }
+            } catch (err) {
+                console.warn('Google Identity button render notice:', err);
+            }
+        }
+    }
+};
+
+// Fallback Google Auth Trigger
+window.triggerGoogleAuth = () => {
+    const clientId = state.settings?.google_client_id;
+    if (clientId && window.google && window.google.accounts) {
+        google.accounts.id.prompt();
+    } else {
+        showToast('Google Sign-In: Store admin can configure your Google Client ID in Admin Panel Settings', 'info');
+    }
+};
+
+window.handleGoogleLogin = window.triggerGoogleAuth;
 
 window.handleUserLogout = () => {
     state.user = null;
@@ -1101,10 +1322,23 @@ window.handleTrackOrder = async (e) => {
                     <span style="color:var(--color-text-muted);">Total Amount:</span>
                     <strong>${formatPrice(order.total)}</strong>
                 </div>
-                <div style="display:flex; justify-content:space-between;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
                     <span style="color:var(--color-text-muted);">Payment:</span>
-                    <span style="text-transform:capitalize;">${order.payment_status || 'Pending'}</span>
+                    <span style="text-transform:capitalize; font-weight:600;">${order.payment_status || 'Pending'}</span>
                 </div>
+                ${order.payment_id ? `
+                    <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                        <span style="color:var(--color-text-muted);">UPI Ref / UTR:</span>
+                        <strong style="font-family:monospace; color:#4338ca;">${order.payment_id}</strong>
+                    </div>
+                ` : ''}
+                ${(order.courier_name || order.tracking_number) ? `
+                    <div style="margin-top:10px; padding:10px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:4px; font-size:0.85rem; color:#166534;">
+                        <div style="font-weight:700; margin-bottom:2px;">🚚 Courier Tracking:</div>
+                        <div>Partner: <strong>${order.courier_name || 'Standard Dispatch'}</strong></div>
+                        ${order.tracking_number ? `<div>Consignment / AWB: <strong style="font-family:monospace; background:white; padding:2px 6px; border-radius:3px; border:1px solid #bbf7d0;">${order.tracking_number}</strong></div>` : ''}
+                    </div>
+                ` : ''}
             </div>
 
             <div style="text-align:center; margin-top:16px;">
@@ -1231,8 +1465,32 @@ const router = () => {
     });
 };
 
+// --- Store Settings Loader ---
+const loadStoreSettings = async () => {
+    try {
+        const s = await api.getSettings();
+        if (s) {
+            state.settings = s;
+            if (s.whatsapp) CONFIG.WHATSAPP_NUMBER = s.whatsapp.replace(/[^0-9]/g, '');
+            if (s.shop_name) CONFIG.STORE_NAME = s.shop_name;
+            if (s.free_shipping_threshold) CONFIG.FREE_SHIPPING_THRESHOLD = parseFloat(s.free_shipping_threshold);
+            
+            // Initialize Google Identity Services if client ID is configured
+            window.initGoogleIdentity();
+        }
+    } catch (e) {
+        console.warn('Failed to load store settings:', e);
+    }
+};
+
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
+    // Load Settings & Initialize Integrations
+    loadStoreSettings();
+
+    // Background keep-alive to mitigate Render free-tier cold starts
+    setInterval(() => { api.getSettings(); }, 240000);
+
     // Router
     window.addEventListener('hashchange', router);
     router();

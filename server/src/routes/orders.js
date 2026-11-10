@@ -147,13 +147,41 @@ router.get('/:id', authenticateToken, (req, res) => {
 
 router.put('/:id/status', authenticateToken, (req, res) => {
     try {
-        const { order_status } = req.body;
-        if (!order_status) {
-            return res.status(400).json({ success: false, error: 'order_status is required' });
+        const order_status = req.body.order_status || req.body.status;
+        const tracking_number = req.body.tracking_number;
+        const courier_name = req.body.courier_name;
+        const payment_status = req.body.payment_status;
+
+        if (!order_status && !payment_status) {
+            return res.status(400).json({ success: false, error: 'order_status or payment_status is required' });
         }
         
-        db.prepare('UPDATE orders SET order_status = ? WHERE id = ?').run(order_status, req.params.id);
-        res.json({ success: true, data: 'Order status updated' });
+        let query = 'UPDATE orders SET ';
+        const sets = [];
+        const params = [];
+
+        if (order_status) {
+            sets.push('order_status = ?');
+            params.push(order_status);
+        }
+        if (payment_status) {
+            sets.push('payment_status = ?');
+            params.push(payment_status);
+        }
+        if (tracking_number !== undefined) {
+            sets.push('tracking_number = ?');
+            params.push(tracking_number);
+        }
+        if (courier_name !== undefined) {
+            sets.push('courier_name = ?');
+            params.push(courier_name);
+        }
+
+        query += sets.join(', ') + ' WHERE id = ?';
+        params.push(req.params.id);
+
+        db.prepare(query).run(...params);
+        res.json({ success: true, data: 'Order updated successfully' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ success: false, error: 'Internal server error' });

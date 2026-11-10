@@ -706,12 +706,12 @@ const app = {
                         <td>${JSON.parse(o.items || '[]').length}</td>
                         <td>${utils.formatCurrency(o.total)}</td>
                         <td>
-                            <select onchange="app.updateOrderStatus(${o.id}, this.value)" class="badge-status badge-${o.order_status.toLowerCase()}">
-                                <option value="Pending" ${o.order_status==='Pending'?'selected':''}>Pending</option>
-                                <option value="Confirmed" ${o.order_status==='Confirmed'?'selected':''}>Confirmed</option>
-                                <option value="Shipped" ${o.order_status==='Shipped'?'selected':''}>Shipped</option>
-                                <option value="Delivered" ${o.order_status==='Delivered'?'selected':''}>Delivered</option>
-                                <option value="Cancelled" ${o.order_status==='Cancelled'?'selected':''}>Cancelled</option>
+                            <select onchange="app.updateOrderStatus(${o.id}, this.value)" class="badge-status badge-${(o.order_status || 'pending').toLowerCase()}">
+                                <option value="Pending" ${(o.order_status||'').toLowerCase()==='pending'?'selected':''}>Pending 📝</option>
+                                <option value="Processing" ${(o.order_status||'').toLowerCase()==='processing'||(o.order_status||'').toLowerCase()==='confirmed'?'selected':''}>Processing / Crafting 🎨</option>
+                                <option value="Shipped" ${(o.order_status||'').toLowerCase()==='shipped'?'selected':''}>Shipped / In Transit 🚚</option>
+                                <option value="Delivered" ${(o.order_status||'').toLowerCase()==='delivered'?'selected':''}>Delivered 🎉</option>
+                                <option value="Cancelled" ${(o.order_status||'').toLowerCase()==='cancelled'?'selected':''}>Cancelled ❌</option>
                             </select>
                         </td>
                         <td>${utils.formatDate(o.created_at)}</td>
@@ -733,10 +733,9 @@ const app = {
             utils.showSpinner();
             await auth.fetch(`/orders/${id}/status`, {
                 method: 'PUT',
-                body: JSON.stringify({ status })
+                body: JSON.stringify({ order_status: status, status: status })
             });
-            utils.showToast('Order status updated', 'success');
-            // Refresh colors on the select element handled by re-rendering or class toggling, simplest is reload:
+            utils.showToast(`Order status updated to "${status}"`, 'success');
             app.loadOrders();
         } catch (err) {
             utils.showToast('Failed to update status', 'error');
@@ -752,36 +751,110 @@ const app = {
             
             let items = typeof o.items === 'string' ? JSON.parse(o.items || '[]') : (o.items || []);
             let itemsHtml = items.map(i => `
-                <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem; border-bottom:1px solid #eee; padding-bottom:0.5rem;">
-                    <div>${i.name} x ${i.quantity}</div>
-                    <div>${utils.formatCurrency(i.price * i.quantity)}</div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem; border-bottom:1px solid #eee; padding-bottom:0.5rem; font-size: 0.95rem;">
+                    <div><strong>${i.name}</strong> × ${i.quantity}</div>
+                    <div style="font-weight:600;">${utils.formatCurrency(i.price * i.quantity)}</div>
                 </div>
             `).join('');
 
+            const cleanPhone = (o.phone || '').replace(/[^0-9]/g, '');
+
             const html = `
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; margin-bottom: 1.5rem;">
                     <div>
-                        <h4>Customer Details</h4>
-                        <p>${o.customer_name}<br>${o.email || ''}<br>${o.phone || ''}</p>
+                        <h4 style="margin-bottom:6px; color:#374151;">Customer Information</h4>
+                        <p style="margin:0 0 6px 0;">
+                            <strong>${o.customer_name}</strong><br>
+                            ${o.email ? `Email: ${o.email}<br>` : ''}
+                            Phone: <a href="tel:${o.phone}">${o.phone}</a>
+                        </p>
+                        ${cleanPhone ? `
+                            <a href="https://wa.me/${cleanPhone}?text=Hi%20${encodeURIComponent(o.customer_name)},%20regarding%20your%20Sindhyaaz%20Crafts%20order%20%23${o.order_number}..." target="_blank" class="btn btn-sm btn-outline" style="border-color:#25D366; color:#25D366; display:inline-flex; align-items:center; gap:4px; margin-top:4px;">
+                                💬 WhatsApp Customer
+                            </a>
+                        ` : ''}
                     </div>
                     <div>
-                        <h4>Shipping Address</h4>
-                        <p>${o.address || 'N/A'}</p>
+                        <h4 style="margin-bottom:6px; color:#374151;">Shipping Address</h4>
+                        <p style="margin:0;">${o.address || 'N/A'}<br>${o.city || ''} ${o.state || ''} - ${o.pincode || ''}</p>
+                        ${o.notes ? `
+                            <div style="margin-top:8px; background:#fffbeb; border:1px solid #fde68a; padding:8px 10px; border-radius:4px; font-size:0.85rem; color:#92400e;">
+                                <strong>Customization Notes:</strong> ${o.notes}
+                            </div>
+                        ` : ''}
                     </div>
                 </div>
-                <div>
-                    <h4>Order Items</h4>
-                    <div style="margin-top:1rem; border:1px solid #eee; padding:1rem; border-radius:4px;">
+
+                <div style="margin-bottom: 1.5rem;">
+                    <h4 style="margin-bottom:6px; color:#374151;">Ordered Items</h4>
+                    <div style="border:1px solid #e5e7eb; padding:1rem; border-radius:6px; background:#fafafa;">
                         ${itemsHtml}
-                        <div style="display:flex; justify-content:space-between; margin-top:1rem; font-weight:bold;">
+                        <div style="display:flex; justify-content:space-between; margin-top:1rem; padding-top:0.75rem; border-top:1px solid #e5e7eb; font-weight:700; font-size:1.1rem;">
                             <div>Total Amount</div>
-                            <div>${utils.formatCurrency(o.total)}</div>
+                            <div style="color:var(--primary);">${utils.formatCurrency(o.total)}</div>
                         </div>
                     </div>
                 </div>
-                <div style="margin-top: 1rem;">
-                    <h4>Payment Info</h4>
-                    <p>Method: ${o.payment_id || 'N/A'} | Status: ${o.payment_status || 'N/A'}</p>
+
+                <!-- Payment Status & UTR Verification -->
+                <div style="margin-bottom: 1.5rem; background:#f0fdf4; border:1px solid #bbf7d0; padding:1rem; border-radius:6px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                        <h4 style="margin:0; color:#166534;">Payment Verification</h4>
+                        <span class="badge-status badge-${(o.payment_status || 'pending').toLowerCase()}">${o.payment_status || 'Pending'}</span>
+                    </div>
+                    ${o.payment_id ? `
+                        <div style="margin-top:8px; font-size:0.95rem;">
+                            UPI Ref / UTR No: <strong style="font-family:monospace; font-size:1.05rem; background:white; padding:3px 8px; border-radius:4px; border:1px solid #bbf7d0; color:#15803d;">${o.payment_id}</strong>
+                        </div>
+                    ` : `
+                        <p style="margin:6px 0 0 0; font-size:0.85rem; color:#6b7280;">No UPI reference attached (Cash on delivery / standard checkout).</p>
+                    `}
+                    <div style="margin-top:10px; display:flex; gap:8px;">
+                        <button type="button" class="btn btn-sm btn-primary" onclick="app.updatePaymentStatus(${o.id}, 'paid')">
+                            Mark as Paid ✅
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline" onclick="app.updatePaymentStatus(${o.id}, 'pending')">
+                            Mark as Pending ⏳
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Live Fulfillment & Tracking Section -->
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; padding:1rem; border-radius:6px;">
+                    <h4 style="margin:0 0 10px 0; color:#334155;">Live Order Tracking & Dispatch Control</h4>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:10px;">
+                        <div>
+                            <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:4px; color:#475569;">
+                                Order Status (Controls Customer Tracking Stepper)
+                            </label>
+                            <select id="modalOrderStatus" class="form-control" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:4px;">
+                                <option value="Pending" ${(o.order_status||'').toLowerCase()==='pending'?'selected':''}>Pending 📝 (Step 1: Order Placed)</option>
+                                <option value="Processing" ${(o.order_status||'').toLowerCase()==='processing'||(o.order_status||'').toLowerCase()==='confirmed'?'selected':''}>Processing / Crafting 🎨 (Step 2: Crafting)</option>
+                                <option value="Shipped" ${(o.order_status||'').toLowerCase()==='shipped'?'selected':''}>Shipped / In Transit 🚚 (Step 3: Dispatched)</option>
+                                <option value="Delivered" ${(o.order_status||'').toLowerCase()==='delivered'?'selected':''}>Delivered 🎉 (Step 4: Delivered)</option>
+                                <option value="Cancelled" ${(o.order_status||'').toLowerCase()==='cancelled'?'selected':''}>Cancelled ❌</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:4px; color:#475569;">
+                                Courier Partner
+                            </label>
+                            <input type="text" id="modalCourierName" value="${o.courier_name || ''}" placeholder="e.g. India Post / DTDC / Bluedart" class="form-control" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:4px;">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:4px; color:#475569;">
+                            Courier AWB / Tracking Consignment No.
+                        </label>
+                        <input type="text" id="modalTrackingNumber" value="${o.tracking_number || ''}" placeholder="e.g. EP123456789IN" class="form-control" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:4px;">
+                    </div>
+
+                    <div style="margin-top:14px; text-align:right;">
+                        <button type="button" class="btn btn-primary" onclick="app.saveOrderTracking(${o.id})" style="padding:8px 18px;">
+                            Save & Update Live Tracking 🚀
+                        </button>
+                    </div>
                 </div>
             `;
 
@@ -791,6 +864,50 @@ const app = {
 
         } catch (err) {
             utils.showToast('Failed to load order details', 'error');
+        } finally {
+            utils.hideSpinner();
+        }
+    },
+
+    saveOrderTracking: async (id) => {
+        try {
+            const status = document.getElementById('modalOrderStatus').value;
+            const courier = document.getElementById('modalCourierName').value.trim();
+            const tracking = document.getElementById('modalTrackingNumber').value.trim();
+
+            utils.showSpinner();
+            await auth.fetch(`/orders/${id}/status`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    order_status: status,
+                    status: status,
+                    courier_name: courier,
+                    tracking_number: tracking
+                })
+            });
+
+            utils.showToast(`Order #${id} tracking updated to "${status}"! 🚀`, 'success');
+            app.loadOrders();
+            app.viewOrder(id);
+        } catch (err) {
+            utils.showToast('Failed to update tracking details', 'error');
+        } finally {
+            utils.hideSpinner();
+        }
+    },
+
+    updatePaymentStatus: async (id, payment_status) => {
+        try {
+            utils.showSpinner();
+            await auth.fetch(`/orders/${id}/status`, {
+                method: 'PUT',
+                body: JSON.stringify({ payment_status })
+            });
+            utils.showToast(`Payment status updated to "${payment_status}"`, 'success');
+            app.loadOrders();
+            app.viewOrder(id);
+        } catch (err) {
+            utils.showToast('Failed to update payment status', 'error');
         } finally {
             utils.hideSpinner();
         }
@@ -812,8 +929,10 @@ const app = {
             document.getElementById('setting-phone').value = s.phone || '';
             document.getElementById('setting-email').value = s.email || '';
             document.getElementById('setting-address').value = s.address || '';
-            document.getElementById('setting-free-shipping').value = s.freeShippingThreshold || '';
-            document.getElementById('setting-min-order').value = s.minOrderAmount || '';
+            document.getElementById('setting-free-shipping').value = s.free_shipping_threshold || s.freeShippingThreshold || '';
+            document.getElementById('setting-min-order').value = s.min_order_amount || s.minOrderAmount || '';
+            document.getElementById('setting-upi-id').value = s.upi_id || s.upiId || '8098587377@upi';
+            document.getElementById('setting-google-client-id').value = s.google_client_id || s.googleClientId || '';
             
         } catch (err) {
             utils.showToast('Failed to load settings', 'error');
@@ -824,14 +943,16 @@ const app = {
 
     saveSettings: async () => {
         const payload = {
-            shopName: document.getElementById('setting-shop-name').value,
+            shop_name: document.getElementById('setting-shop-name').value,
             announcement: document.getElementById('setting-announcement').value,
             whatsapp: document.getElementById('setting-whatsapp').value,
             phone: document.getElementById('setting-phone').value,
             email: document.getElementById('setting-email').value,
             address: document.getElementById('setting-address').value,
-            freeShippingThreshold: parseFloat(document.getElementById('setting-free-shipping').value) || 0,
-            minOrderAmount: parseFloat(document.getElementById('setting-min-order').value) || 0
+            free_shipping_threshold: parseFloat(document.getElementById('setting-free-shipping').value) || 0,
+            min_order_amount: parseFloat(document.getElementById('setting-min-order').value) || 0,
+            upi_id: document.getElementById('setting-upi-id').value.trim(),
+            google_client_id: document.getElementById('setting-google-client-id').value.trim()
         };
 
         try {

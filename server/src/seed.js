@@ -497,7 +497,9 @@ async function seed() {
         { key: 'address', value: 'India' },
         { key: 'currency', value: 'INR' },
         { key: 'free_shipping_threshold', value: '499' },
-        { key: 'min_order_amount', value: '199' }
+        { key: 'min_order_amount', value: '199' },
+        { key: 'upi_id', value: '8098587377@upi' },
+        { key: 'google_client_id', value: '' }
     ];
 
     const insertSetting = db.prepare('INSERT INTO site_settings (key, value) VALUES (?, ?)');

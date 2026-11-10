@@ -103,7 +103,21 @@ router.post('/login', async (req, res) => {
 // Third-Party / Google Login
 router.post('/google-login', async (req, res) => {
     try {
-        const { name, email, google_id, avatar } = req.body;
+        let { name, email, google_id, avatar, credential } = req.body;
+
+        if (credential && (!email || !google_id)) {
+            try {
+                const payloadBase64 = credential.split('.')[1];
+                const decoded = JSON.parse(Buffer.from(payloadBase64, 'base64').toString('utf8'));
+                if (decoded.email) email = decoded.email;
+                if (decoded.name) name = decoded.name;
+                if (decoded.sub) google_id = decoded.sub;
+                if (decoded.picture) avatar = decoded.picture;
+            } catch (decErr) {
+                console.warn('Could not decode credential JWT:', decErr);
+            }
+        }
+
         if (!email) {
             return res.status(400).json({ success: false, error: 'Email is required for Google Sign-in' });
         }
@@ -228,6 +242,9 @@ router.post('/track-order', (req, res) => {
                 created_at: order.created_at,
                 order_status: order.order_status,
                 payment_status: order.payment_status,
+                payment_id: order.payment_id,
+                tracking_number: order.tracking_number,
+                courier_name: order.courier_name,
                 total: order.total,
                 subtotal: order.subtotal,
                 shipping: order.shipping,
