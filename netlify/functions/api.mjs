@@ -1,5 +1,17 @@
 import serverless from 'serverless-http';
-import { app, db } from '../../server/src/app.js';
+import expressPkg from 'express';
+import corsPkg from 'cors';
+import pgPkg from 'pg';
+import bcryptPkg from 'bcryptjs';
+import jwtPkg from 'jsonwebtoken';
+import multerPkg from 'multer';
+import * as netlifyDbPkg from '@netlify/database';
+import appModule from '../../server/src/app.js';
+
+// Keep top-level ESM references so Netlify's NFT tracer packages every CJS runtime dependency
+globalThis.__netlifyDeps = [expressPkg, corsPkg, pgPkg, bcryptPkg, jwtPkg, multerPkg, netlifyDbPkg].length;
+
+const { app, db } = appModule;
 
 const expressHandler = serverless(app, {
     binary: ['image/*', 'multipart/form-data', 'application/octet-stream']
