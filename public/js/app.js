@@ -539,6 +539,9 @@ const renderCart = () => {
     const total = subtotal + shipping;
 
     const progress = Math.min(100, Math.round((subtotal / CONFIG.FREE_SHIPPING_THRESHOLD) * 100));
+    const upiId = (state.settings && state.settings.upi_id) ? state.settings.upi_id : '8098587377@upi';
+    const upiPayUrl = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(CONFIG.STORE_NAME || 'Sindhyaaz Crafts')}&am=${total}&cu=INR&tn=${encodeURIComponent('Sindhyaaz Order')}`;
+    const upiQrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiPayUrl)}`;
 
     container.innerHTML = `
         <div class="cart-items">
@@ -596,11 +599,44 @@ const renderCart = () => {
                     <span>Total Amount</span>
                     <span style="color:var(--color-primary);">${formatPrice(total)}</span>
                 </div>
-                <a href="#/checkout" class="btn btn-primary w-100" style="margin-top:22px; padding:14px; font-size:1.05rem; display:block; text-align:center;">
-                    Proceed to Checkout 🔒
+
+                <!-- Instant UPI Option Card on Cart -->
+                <div style="margin-top:18px; padding:14px; background:linear-gradient(135deg, rgba(95,37,159,0.06), rgba(232,121,160,0.08)); border:1px solid rgba(95,37,159,0.22); border-radius:var(--radius-sm);">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                        <span style="font-weight:700; font-size:0.9rem; color:#4c1d95;">📲 Instant UPI Payment (0% Fee)</span>
+                        <button type="button" id="toggleCartUpiBtn" onclick="window.toggleCartUpiPreview()" style="background:white; border:1px solid #c4b5fd; color:#5b21b6; border-radius:20px; padding:3px 10px; font-size:0.75rem; font-weight:600; cursor:pointer;">
+                            Show QR / UPI ID
+                        </button>
+                    </div>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:6px;">
+                        <span style="background:white; border:1px solid var(--color-border); padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600;">GPay</span>
+                        <span style="background:white; border:1px solid var(--color-border); padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600;">PhonePe</span>
+                        <span style="background:white; border:1px solid var(--color-border); padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600;">Paytm</span>
+                        <span style="background:white; border:1px solid var(--color-border); padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600;">BHIM UPI</span>
+                    </div>
+                    <div id="cartUpiPreview" style="display:none; text-align:center; padding-top:10px; margin-top:8px; border-top:1px dashed rgba(95,37,159,0.25);">
+                        <img id="cartUpiQrImg" src="${upiQrCodeUrl}" alt="UPI Payment QR" style="width:155px; height:155px; border:3px solid white; border-radius:8px; box-shadow:var(--shadow-sm); margin:4px auto 10px;">
+                        <div style="display:flex; align-items:center; justify-content:center; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
+                            <strong id="cartUpiIdText" style="font-family:monospace; font-size:0.86rem; background:white; padding:4px 8px; border-radius:4px; border:1px solid var(--color-border);">${upiId}</strong>
+                            <button type="button" onclick="window.copyUpiId()" style="background:white; border:1px solid var(--color-border); border-radius:4px; padding:4px 8px; font-size:0.75rem; cursor:pointer; font-weight:600;">📋 Copy</button>
+                        </div>
+                        <a id="cartUpiIntentLink" href="${upiPayUrl}" class="btn w-100" style="background:linear-gradient(135deg, #5f259f, #7b2cbf); color:white; padding:10px; font-size:0.88rem; display:block; text-align:center; border-radius:var(--radius-sm); text-decoration:none; font-weight:600; margin-bottom:8px;">
+                            Open UPI App to Pay ${formatPrice(total)}
+                        </a>
+                        <p style="font-size:0.74rem; color:var(--color-text-muted); margin:0;">
+                            After paying, click "Pay Now via UPI" below to enter your delivery address &amp; 12-digit UTR number.
+                        </p>
+                    </div>
+                </div>
+
+                <a href="#/checkout?pay=upi" class="btn w-100" style="margin-top:14px; padding:13px; font-size:1rem; display:block; text-align:center; background:linear-gradient(135deg, #5f259f, #7b2cbf); color:white; border-radius:var(--radius-sm); font-weight:700; text-decoration:none;">
+                    Pay Now via UPI 📲 (${formatPrice(total)})
+                </a>
+                <a href="#/checkout" class="btn btn-primary w-100" style="margin-top:10px; padding:13px; font-size:1rem; display:block; text-align:center;">
+                    Proceed to Checkout (COD / UPI) 🔒
                 </a>
                 <p style="text-align:center; font-size:0.8rem; margin-top:14px; color:var(--color-text-muted);">
-                    🛡️ 100% Buyer Protection & Safe Payments
+                    🛡️ 100% Buyer Protection &amp; Safe Payments
                 </p>
             </div>
         </div>
@@ -626,8 +662,12 @@ const renderCheckout = () => {
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
 
+    const hashQuery = window.location.hash.split('?')[1] || '';
+    const payParam = new URLSearchParams(hashQuery).get('pay');
+    const defaultPayMethod = payParam === 'upi' ? 'online' : 'cod';
+
     const upiId = (state.settings && state.settings.upi_id) ? state.settings.upi_id : '8098587377@upi';
-    const upiPayUrl = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=Sindhyaaz%20Crafts&am=${total}&cu=INR&tn=Sindhyaaz%20Order`;
+    const upiPayUrl = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(CONFIG.STORE_NAME || 'Sindhyaaz Crafts')}&am=${total}&cu=INR&tn=${encodeURIComponent('Sindhyaaz Order')}`;
     const upiQrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiPayUrl)}`;
 
     container.innerHTML = `
@@ -692,25 +732,25 @@ const renderCheckout = () => {
                 </div>
 
                 <h3 style="font-family:var(--font-heading); margin-bottom:16px;">Payment Method</h3>
-                
-                <!-- Cash on Delivery Option -->
-                <div id="codOptionWrapper" style="border: 2px solid var(--color-primary); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 14px; background: rgba(232, 121, 160, 0.05); cursor: pointer;" onclick="document.getElementById('radioCod').click()">
-                    <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight:600;">
-                        <input type="radio" id="radioCod" name="payment_method" value="cod" checked onchange="window.togglePaymentMethod('cod')" style="accent-color:var(--color-primary); width:18px; height:18px;">
-                        <span>Cash on Delivery (COD) 💵</span>
-                    </label>
-                    <p style="margin: 6px 0 0 30px; font-size:0.82rem; color:var(--color-text-muted);">Pay with cash upon delivery at your doorstep.</p>
-                </div>
 
                 <!-- UPI / Online Payment Option -->
-                <div id="onlineOptionWrapper" style="border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 24px; background: white; cursor: pointer;" onclick="document.getElementById('radioOnline').click()">
-                    <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight:600;">
-                        <input type="radio" id="radioOnline" name="payment_method" value="online" onchange="window.togglePaymentMethod('online')" style="accent-color:var(--color-primary); width:18px; height:18px;">
-                        <span>Pay via UPI / GPay / PhonePe / Paytm / QR 📲</span>
-                    </label>
-                    <p style="margin: 6px 0 0 30px; font-size:0.82rem; color:var(--color-text-muted);">Instant QR code, deep link for mobile apps, and instant receipt verification.</p>
+                <div id="onlineOptionWrapper" style="border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 14px; background: white; cursor: pointer;" onclick="document.getElementById('radioOnline').click()">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                        <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight:600;">
+                            <input type="radio" id="radioOnline" name="payment_method" value="online" ${defaultPayMethod === 'online' ? 'checked' : ''} onchange="window.togglePaymentMethod('online')" style="accent-color:var(--color-primary); width:18px; height:18px;">
+                            <span>Pay via UPI / GPay / PhonePe / Paytm / QR 📲</span>
+                        </label>
+                        <span style="background:#eef2ff; color:#4338ca; padding:2px 10px; border-radius:20px; font-size:0.72rem; font-weight:700;">⚡ Instant • 0% Fee</span>
+                    </div>
+                    <p style="margin: 6px 0 8px 30px; font-size:0.82rem; color:var(--color-text-muted);">Scan QR code or open GPay, PhonePe, Paytm, or BHIM directly for instant confirmation.</p>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-left:30px;">
+                        <span style="background:#f8fafc; border:1px solid var(--color-border); padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600;">GPay</span>
+                        <span style="background:#f8fafc; border:1px solid var(--color-border); padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600;">PhonePe</span>
+                        <span style="background:#f8fafc; border:1px solid var(--color-border); padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600;">Paytm</span>
+                        <span style="background:#f8fafc; border:1px solid var(--color-border); padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600;">BHIM UPI</span>
+                    </div>
 
-                    <!-- Interactive UPI Payment Widget (Hidden by default, shown when radio checked) -->
+                    <!-- Interactive UPI Payment Widget -->
                     <div id="upiDetailsBox" style="display:none; margin-top: 16px; padding: 18px; background: #fafafa; border: 1px dashed var(--color-primary); border-radius: var(--radius-sm); text-align: center;" onclick="event.stopPropagation()">
                         <div style="display:inline-block; padding: 4px 14px; background: #eef2ff; color: #4338ca; border-radius: 20px; font-size: 0.8rem; font-weight: 700; margin-bottom: 12px;">
                             ⚡ Instant UPI Payment (0% Fees)
@@ -719,21 +759,21 @@ const renderCheckout = () => {
                         
                         <!-- Dynamic QR Code -->
                         <div style="display: flex; justify-content: center; margin: 12px 0;">
-                            <img src="${upiQrCodeUrl}" alt="UPI Payment QR" style="width: 180px; height: 180px; border: 4px solid white; border-radius: 8px; box-shadow: var(--shadow-sm);">
+                            <img id="checkoutUpiQrImg" src="${upiQrCodeUrl}" alt="UPI Payment QR" style="width: 180px; height: 180px; border: 4px solid white; border-radius: 8px; box-shadow: var(--shadow-sm);">
                         </div>
 
                         <!-- UPI ID with Copy Button -->
                         <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;">
                             <span style="font-size: 0.88rem; color: var(--color-text-muted);">Store UPI ID:</span>
-                            <strong style="font-family: monospace; font-size: 1rem; color: var(--color-text-dark); background: white; padding: 5px 10px; border-radius: 4px; border: 1px solid var(--color-border);">${upiId}</strong>
-                            <button type="button" class="btn btn-outline" onclick="window.copyUpiId('${upiId}')" style="padding: 4px 10px; font-size: 0.8rem;">
+                            <strong id="checkoutUpiIdText" style="font-family: monospace; font-size: 1rem; color: var(--color-text-dark); background: white; padding: 5px 10px; border-radius: 4px; border: 1px solid var(--color-border);">${upiId}</strong>
+                            <button type="button" class="btn btn-outline" onclick="window.copyUpiId()" style="padding: 4px 10px; font-size: 0.8rem;">
                                 📋 Copy
                             </button>
                         </div>
 
                         <!-- Mobile Intent Link -->
                         <div style="margin-bottom: 14px;">
-                            <a href="${upiPayUrl}" class="btn btn-primary w-100" style="background: linear-gradient(135deg, #5f259f, #7b2cbf); border: none; padding: 12px; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; color: white;">
+                            <a id="checkoutUpiIntentLink" href="${upiPayUrl}" class="btn btn-primary w-100" style="background: linear-gradient(135deg, #5f259f, #7b2cbf); border: none; padding: 12px; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; color: white;">
                                 📲 Open GPay / PhonePe / Paytm to Pay ${formatPrice(total)}
                             </a>
                         </div>
@@ -749,6 +789,15 @@ const renderCheckout = () => {
                             </p>
                         </div>
                     </div>
+                </div>
+
+                <!-- Cash on Delivery Option -->
+                <div id="codOptionWrapper" style="border: 2px solid var(--color-primary); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 24px; background: rgba(232, 121, 160, 0.05); cursor: pointer;" onclick="document.getElementById('radioCod').click()">
+                    <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight:600;">
+                        <input type="radio" id="radioCod" name="payment_method" value="cod" ${defaultPayMethod === 'cod' ? 'checked' : ''} onchange="window.togglePaymentMethod('cod')" style="accent-color:var(--color-primary); width:18px; height:18px;">
+                        <span>Cash on Delivery (COD) 💵</span>
+                    </label>
+                    <p style="margin: 6px 0 0 30px; font-size:0.82rem; color:var(--color-text-muted);">Pay with cash upon delivery at your doorstep.</p>
                 </div>
 
                 <div style="margin-bottom:20px;">
@@ -799,6 +848,41 @@ const renderCheckout = () => {
             </div>
         </div>
     `;
+
+    window.togglePaymentMethod(defaultPayMethod);
+};
+
+window.toggleCartUpiPreview = () => {
+    const box = document.getElementById('cartUpiPreview');
+    const btn = document.getElementById('toggleCartUpiBtn');
+    if (!box) return;
+    const isHidden = box.style.display === 'none' || !box.style.display;
+    box.style.display = isHidden ? 'block' : 'none';
+    if (btn) btn.textContent = isHidden ? 'Hide QR / UPI ID' : 'Show QR / UPI ID';
+};
+
+const syncLiveUpiDisplay = () => {
+    const upiId = (state.settings && state.settings.upi_id) ? state.settings.upi_id : '8098587377@upi';
+    const subtotal = cartManager.getTotal();
+    const shipping = subtotal >= CONFIG.FREE_SHIPPING_THRESHOLD ? 0 : 50;
+    const total = subtotal + shipping;
+    const upiPayUrl = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(CONFIG.STORE_NAME || 'Sindhyaaz Crafts')}&am=${total}&cu=INR&tn=${encodeURIComponent('Sindhyaaz Order')}`;
+    const qr200 = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiPayUrl)}`;
+    const qr220 = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiPayUrl)}`;
+
+    const cartId = document.getElementById('cartUpiIdText');
+    const cartQr = document.getElementById('cartUpiQrImg');
+    const cartLink = document.getElementById('cartUpiIntentLink');
+    if (cartId) cartId.textContent = upiId;
+    if (cartQr) cartQr.src = qr200;
+    if (cartLink) cartLink.href = upiPayUrl;
+
+    const checkoutId = document.getElementById('checkoutUpiIdText');
+    const checkoutQr = document.getElementById('checkoutUpiQrImg');
+    const checkoutLink = document.getElementById('checkoutUpiIntentLink');
+    if (checkoutId) checkoutId.textContent = upiId;
+    if (checkoutQr) checkoutQr.src = qr220;
+    if (checkoutLink) checkoutLink.href = upiPayUrl;
 };
 
 // Payment method toggle handler
@@ -1506,6 +1590,9 @@ const loadStoreSettings = async () => {
             
             // Initialize Google Identity Services if client ID is configured
             window.initGoogleIdentity();
+
+            // Sync dynamic UPI ID & QR on Cart / Checkout if currently visible
+            syncLiveUpiDisplay();
         }
     } catch (e) {
         console.warn('Failed to load store settings:', e);
