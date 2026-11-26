@@ -2,7 +2,16 @@ const { Pool } = require('pg');
 const path = require('path');
 const fs = require('fs');
 
-function resolvePostgresUrl() {
+function resolvePostgresUrl(explicitUrl = '') {
+    if (explicitUrl && String(explicitUrl).trim()) {
+        return String(explicitUrl).trim();
+    }
+    try {
+        if (typeof Netlify !== 'undefined' && Netlify.env) {
+            const nUrl = Netlify.env.get('NETLIFY_DB_URL') || Netlify.env.get('DATABASE_URL');
+            if (nUrl && String(nUrl).trim()) return String(nUrl).trim();
+        }
+    } catch (e) {}
     if (process.env.NETLIFY_DB_URL && process.env.NETLIFY_DB_URL.trim()) {
         return process.env.NETLIFY_DB_URL.trim();
     }
@@ -294,13 +303,16 @@ const db = {
         };
     },
 
-    async init() {
+    async init(explicitUrl = '') {
         if (!initPromise) {
             initPromise = (async () => {
-                const pgUrl = resolvePostgresUrl();
+                const pgUrl = resolvePostgresUrl(explicitUrl);
                 if (pgUrl) {
                     await initPostgres(pgUrl);
                 } else {
+                    if (process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+                        throw new Error('PostgreSQL database URL (NETLIFY_DB_URL or DATABASE_URL) is not configured for serverless runtime.');
+                    }
                     initSqlite();
                 }
             })().catch(err => {
