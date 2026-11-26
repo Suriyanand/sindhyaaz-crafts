@@ -7,3 +7,4 @@ dist/
 .system_generated/
 *.db-journal
 *.db-wal
+*.db-shm
