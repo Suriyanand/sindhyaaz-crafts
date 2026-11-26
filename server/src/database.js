@@ -1,12 +1,24 @@
-const Database = require('better-sqlite3');
 const { Pool } = require('pg');
 const path = require('path');
 const fs = require('fs');
 
+function resolvePostgresUrl() {
+    if (process.env.NETLIFY_DB_URL && process.env.NETLIFY_DB_URL.trim()) {
+        return process.env.NETLIFY_DB_URL.trim();
+    }
+    if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) {
+        return process.env.DATABASE_URL.trim();
+    }
+    try {
+        const { getConnectionString } = require('@netlify/database');
+        const conn = getConnectionString();
+        if (conn && String(conn).trim()) return String(conn).trim();
+    } catch (e) {}
+    return '';
+}
+
 const bundledDbPath = path.join(__dirname, '../database/gift_shop.db');
 const dbPath = process.env.DATABASE_PATH || bundledDbPath;
-const DATABASE_URL = process.env.DATABASE_URL ? process.env.DATABASE_URL.trim() : '';
-const isPostgres = Boolean(DATABASE_URL);
 
 let sqlite = null;
 let pgPool = null;
@@ -42,95 +54,93 @@ function shouldReturnId(sql) {
     const trimmed = sql.trim();
     if (!/^INSERT\s+INTO\s+/i.test(trimmed)) return false;
     if (/RETURNING\s+/i.test(trimmed)) return false;
-    // Tables without a serial `id` column
     if (/^INSERT\s+(OR\s+IGNORE\s+)?INTO\s+(site_settings|uploaded_files)\b/i.test(trimmed)) {
         return false;
     }
     return true;
 }
 
-async function seedPostgresFromBundledSqlite(pool) {
-    if (!fs.existsSync(bundledDbPath)) return;
-
+async function seedPostgresFromJson(pool) {
     const { rows: prodCountRows } = await pool.query('SELECT COUNT(*) AS count FROM products');
     const { rows: adminCountRows } = await pool.query('SELECT COUNT(*) AS count FROM admin_users');
     const prodCount = Number(prodCountRows[0]?.count || 0);
     const adminCount = Number(adminCountRows[0]?.count || 0);
 
     if (prodCount > 0 && adminCount > 0) {
-        return; // Already populated
+        return;
     }
 
-    console.log('Bootstrapping PostgreSQL database from bundled gift_shop.db...');
-    const srcDb = new Database(bundledDbPath, { readonly: true });
-
+    let seedData;
     try {
-        if (adminCount === 0) {
-            const admins = srcDb.prepare('SELECT id, username, password_hash, name, created_at FROM admin_users').all();
-            for (const a of admins) {
-                await pool.query(
-                    `INSERT INTO admin_users (id, username, password_hash, name, created_at)
-                     VALUES ($1, $2, $3, $4, $5) ON CONFLICT (username) DO NOTHING`,
-                    [a.id, a.username, a.password_hash, a.name, a.created_at]
-                );
-            }
-        }
+        seedData = require('../database/seed-data.json');
+    } catch (e) {
+        console.warn('No seed-data.json available for PostgreSQL bootstrap:', e.message);
+        return;
+    }
 
-        const catCountRows = (await pool.query('SELECT COUNT(*) AS count FROM categories')).rows;
-        if (Number(catCountRows[0]?.count || 0) === 0) {
-            const cats = srcDb.prepare('SELECT id, name, slug, image, description, sort_order, is_active, created_at FROM categories').all();
-            for (const c of cats) {
-                await pool.query(
-                    `INSERT INTO categories (id, name, slug, image, description, sort_order, is_active, created_at)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (id) DO NOTHING`,
-                    [c.id, c.name, c.slug, c.image, c.description, c.sort_order ?? 0, c.is_active ?? 1, c.created_at]
-                );
-            }
-        }
+    console.log('Bootstrapping PostgreSQL database from bundled seed-data.json...');
 
-        if (prodCount === 0) {
-            const prods = srcDb.prepare(
-                'SELECT id, name, slug, description, price, compare_price, category_id, images, stock, is_featured, is_active, badge, has_variants, variants, created_at FROM products'
-            ).all();
-            for (const p of prods) {
-                await pool.query(
-                    `INSERT INTO products (id, name, slug, description, price, compare_price, category_id, images, stock, is_featured, is_active, badge, has_variants, variants, created_at)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (id) DO NOTHING`,
-                    [
-                        p.id, p.name, p.slug, p.description, p.price, p.compare_price, p.category_id,
-                        p.images || '[]', p.stock ?? 0, p.is_featured ?? 0, p.is_active ?? 1,
-                        p.badge, p.has_variants ?? 0, p.variants || '[]', p.created_at
-                    ]
-                );
-            }
+    if (adminCount === 0 && Array.isArray(seedData.admin_users)) {
+        for (const a of seedData.admin_users) {
+            await pool.query(
+                `INSERT INTO admin_users (id, username, password_hash, name, created_at)
+                 VALUES ($1, $2, $3, $4, $5) ON CONFLICT (username) DO NOTHING`,
+                [a.id, a.username, a.password_hash, a.name, a.created_at]
+            );
         }
+    }
 
-        const settings = srcDb.prepare('SELECT key, value FROM site_settings').all();
-        for (const s of settings) {
+    const catCountRows = (await pool.query('SELECT COUNT(*) AS count FROM categories')).rows;
+    if (Number(catCountRows[0]?.count || 0) === 0 && Array.isArray(seedData.categories)) {
+        for (const c of seedData.categories) {
+            await pool.query(
+                `INSERT INTO categories (id, name, slug, image, description, sort_order, is_active, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (id) DO NOTHING`,
+                [c.id, c.name, c.slug, c.image, c.description, c.sort_order ?? 0, c.is_active ?? 1, c.created_at]
+            );
+        }
+    }
+
+    if (prodCount === 0 && Array.isArray(seedData.products)) {
+        for (const p of seedData.products) {
+            await pool.query(
+                `INSERT INTO products (id, name, slug, description, price, compare_price, category_id, images, stock, is_featured, is_active, badge, has_variants, variants, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) ON CONFLICT (id) DO NOTHING`,
+                [
+                    p.id, p.name, p.slug, p.description, p.price, p.compare_price, p.category_id,
+                    typeof p.images === 'string' ? p.images : JSON.stringify(p.images || []),
+                    p.stock ?? 0, p.is_featured ?? 0, p.is_active ?? 1,
+                    p.badge, p.has_variants ?? 0,
+                    typeof p.variants === 'string' ? p.variants : JSON.stringify(p.variants || []),
+                    p.created_at
+                ]
+            );
+        }
+    }
+
+    if (Array.isArray(seedData.site_settings)) {
+        for (const s of seedData.site_settings) {
             await pool.query(
                 `INSERT INTO site_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING`,
                 [s.key, s.value]
             );
         }
-
-        // Sync PostgreSQL SERIAL sequences after explicit ID inserts
-        for (const table of ['admin_users', 'categories', 'products', 'orders', 'users']) {
-            await pool.query(
-                `SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE((SELECT MAX(id) FROM ${table}), 1), true)`
-            );
-        }
-        console.log('PostgreSQL bootstrap completed cleanly.');
-    } finally {
-        srcDb.close();
     }
+
+    for (const table of ['admin_users', 'categories', 'products', 'orders', 'users']) {
+        await pool.query(
+            `SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE((SELECT MAX(id) FROM ${table}), 1), true)`
+        );
+    }
+    console.log('PostgreSQL bootstrap completed cleanly.');
 }
 
-async function initPostgres() {
-    const isLocal = DATABASE_URL.includes('localhost') || DATABASE_URL.includes('127.0.0.1');
+async function initPostgres(connStr) {
+    const isLocal = connStr.includes('localhost') || connStr.includes('127.0.0.1');
     const useSsl = process.env.DATABASE_SSL === 'false' ? false : (!isLocal ? { rejectUnauthorized: false } : false);
 
     pgPool = new Pool({
-        connectionString: DATABASE_URL,
+        connectionString: connStr,
         ssl: useSsl,
         max: 10,
         idleTimeoutMillis: 30000
@@ -222,20 +232,20 @@ async function initPostgres() {
         `INSERT INTO site_settings (key, value) VALUES ('upi_id', '8098587377@upi') ON CONFLICT (key) DO NOTHING`
     );
 
-    await seedPostgresFromBundledSqlite(pgPool);
+    await seedPostgresFromJson(pgPool);
     console.log('Connected to PostgreSQL database (persistent storage active).');
 }
 
 function initSqlite() {
+    // Lazy require so Netlify Linux Lambdas running PostgreSQL never load native SQLite addons
+    const Database = require('better-sqlite3');
     const dbDir = path.dirname(dbPath);
     if (!fs.existsSync(dbDir)) {
         fs.mkdirSync(dbDir, { recursive: true });
     }
 
-    // If a persistent disk DB path was configured and is empty on first boot, copy the bundled seeded DB
     if (path.resolve(dbPath) !== path.resolve(bundledDbPath) && !fs.existsSync(dbPath) && fs.existsSync(bundledDbPath)) {
         fs.copyFileSync(bundledDbPath, dbPath);
-        console.log(`Initialized database at ${dbPath} from bundled seed.`);
     }
 
     sqlite = new Database(dbPath);
@@ -244,22 +254,16 @@ function initSqlite() {
 
     const schemaPath = path.join(__dirname, '../database/schema.sql');
     if (fs.existsSync(schemaPath)) {
-        const schema = fs.readFileSync(schemaPath, 'utf8');
-        sqlite.exec(schema);
+        sqlite.exec(fs.readFileSync(schemaPath, 'utf8'));
     }
 
-    // Safely ensure migration columns exist on older DBs
     const alterStatements = [
         'ALTER TABLE orders ADD COLUMN user_id INTEGER',
         'ALTER TABLE orders ADD COLUMN tracking_number TEXT',
         'ALTER TABLE orders ADD COLUMN courier_name TEXT'
     ];
     for (const stmt of alterStatements) {
-        try {
-            sqlite.exec(stmt);
-        } catch (e) {
-            // Column already exists
-        }
+        try { sqlite.exec(stmt); } catch (e) {}
     }
 
     try {
@@ -270,11 +274,13 @@ function initSqlite() {
 }
 
 const db = {
-    isPostgres,
+    get isPostgres() {
+        return Boolean(resolvePostgresUrl());
+    },
 
     isPersistent() {
-        if (isPostgres) return true;
-        if (!process.env.RENDER) return true; // Local machine
+        if (this.isPostgres) return true;
+        if (!process.env.RENDER && !process.env.NETLIFY && !process.env.AWS_LAMBDA_FUNCTION_NAME) return true;
         if (process.env.PERSISTENT_STORAGE === 'true') return true;
         const resolved = path.resolve(dbPath);
         return resolved.startsWith('/var/data') || resolved.startsWith('/data');
@@ -282,17 +288,18 @@ const db = {
 
     getStorageInfo() {
         return {
-            engine: isPostgres ? 'postgresql' : 'sqlite',
+            engine: this.isPostgres ? 'postgresql' : 'sqlite',
             persistent: this.isPersistent(),
-            dbPath: isPostgres ? 'PostgreSQL (DATABASE_URL)' : dbPath
+            dbPath: this.isPostgres ? 'PostgreSQL (Netlify DB / DATABASE_URL)' : dbPath
         };
     },
 
     async init() {
         if (!initPromise) {
             initPromise = (async () => {
-                if (isPostgres) {
-                    await initPostgres();
+                const pgUrl = resolvePostgresUrl();
+                if (pgUrl) {
+                    await initPostgres(pgUrl);
                 } else {
                     initSqlite();
                 }
@@ -306,7 +313,7 @@ const db = {
 
     async get(sql, params = []) {
         await this.init();
-        if (isPostgres) {
+        if (pgPool) {
             const { text, values } = toPgParams(sql, params);
             const res = await pgPool.query(text, values);
             return res.rows[0];
@@ -317,7 +324,7 @@ const db = {
 
     async all(sql, params = []) {
         await this.init();
-        if (isPostgres) {
+        if (pgPool) {
             const { text, values } = toPgParams(sql, params);
             const res = await pgPool.query(text, values);
             return res.rows;
@@ -328,7 +335,7 @@ const db = {
 
     async run(sql, params = []) {
         await this.init();
-        if (isPostgres) {
+        if (pgPool) {
             let finalSql = sql;
             if (shouldReturnId(finalSql)) {
                 finalSql = `${finalSql.trim().replace(/;$/, '')} RETURNING id`;
@@ -350,7 +357,7 @@ const db = {
 
     async exec(sql) {
         await this.init();
-        if (isPostgres) {
+        if (pgPool) {
             await pgPool.query(sql);
         } else {
             sqlite.exec(sql);

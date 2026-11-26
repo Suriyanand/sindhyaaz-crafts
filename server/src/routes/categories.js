@@ -6,25 +6,12 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
+const isServerless = Boolean(process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME);
 const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        const ext = (path.extname(file.originalname) || '.jpg').toLowerCase();
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, uniqueSuffix + ext);
-    }
-});
 
 const upload = multer({
-    storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 4 * 1024 * 1024 }
 });
 
 function slugify(text) {
@@ -36,19 +23,25 @@ function slugify(text) {
         .replace(/-+$/, '');
 }
 
-async function persistUploadedFile(file) {
-    if (!file) return;
-    try {
-        const buffer = fs.readFileSync(file.path);
-        await db.run(
-            `INSERT INTO uploaded_files (filename, mime_type, data_base64)
-             VALUES (?, ?, ?)
-             ON CONFLICT(filename) DO UPDATE SET mime_type = excluded.mime_type, data_base64 = excluded.data_base64`,
-            [file.filename, file.mimetype || 'image/jpeg', buffer.toString('base64')]
-        );
-    } catch (err) {
-        console.warn('Failed to persist category image to DB:', err.message);
+async function persistUploadedCategoryImage(file) {
+    if (!file) return null;
+    const ext = (path.extname(file.originalname) || '.jpg').toLowerCase();
+    const filename = `${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`;
+
+    await db.run(
+        `INSERT INTO uploaded_files (filename, mime_type, data_base64)
+         VALUES (?, ?, ?)
+         ON CONFLICT(filename) DO UPDATE SET mime_type = excluded.mime_type, data_base64 = excluded.data_base64`,
+        [filename, file.mimetype || 'image/jpeg', file.buffer.toString('base64')]
+    );
+
+    if (!isServerless) {
+        try {
+            if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+            fs.writeFileSync(path.join(uploadDir, filename), file.buffer);
+        } catch (e) {}
     }
+    return filename;
 }
 
 router.get('/', async (req, res) => {
@@ -114,8 +107,7 @@ router.post('/', authenticateToken, upload.single('image'), async (req, res) => 
 
         let image = req.body.image || null;
         if (req.file) {
-            await persistUploadedFile(req.file);
-            image = req.file.filename;
+            image = await persistUploadedCategoryImage(req.file);
         }
 
         let slug = slugify(name) || `category-${Date.now()}`;
@@ -146,8 +138,7 @@ router.put('/:id', authenticateToken, upload.single('image'), async (req, res) =
 
         let image = existing.image;
         if (req.file) {
-            await persistUploadedFile(req.file);
-            image = req.file.filename;
+            image = await persistUploadedCategoryImage(req.file);
         } else if (req.body.image === 'null' || req.body.image === '') {
             image = null;
         }
