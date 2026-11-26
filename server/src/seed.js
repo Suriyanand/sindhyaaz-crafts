@@ -2,24 +2,27 @@ const bcrypt = require('bcryptjs');
 const db = require('./database');
 
 async function seed() {
+    await db.init();
     console.log('Seeding database with 70 products (10 per category) and real product images...');
 
     // Clear existing data
-    db.prepare('DELETE FROM products').run();
-    db.prepare('DELETE FROM categories').run();
-    db.prepare('DELETE FROM admin_users').run();
-    db.prepare('DELETE FROM site_settings').run();
+    await db.run('DELETE FROM products');
+    await db.run('DELETE FROM categories');
+    await db.run('DELETE FROM admin_users');
+    await db.run('DELETE FROM site_settings');
 
-    // Reset autoincrement sequences
-    try {
-        db.prepare('DELETE FROM sqlite_sequence WHERE name IN ("products", "categories", "admin_users")').run();
-    } catch(e) {}
+    // Reset autoincrement sequences (SQLite)
+    if (!db.isPostgres) {
+        try {
+            await db.run('DELETE FROM sqlite_sequence WHERE name IN ("products", "categories", "admin_users")');
+        } catch(e) {}
+    }
 
     // Seed Admin User
     const passwordHash = bcrypt.hashSync('admin123', 10);
-    db.prepare('INSERT INTO admin_users (username, password_hash, name) VALUES (?, ?, ?)').run(
-        'admin', passwordHash, 'GiftLux Admin'
-    );
+    await db.run('INSERT INTO admin_users (username, password_hash, name) VALUES (?, ?, ?)', [
+        'admin', passwordHash, 'Sindhyaaz Admin'
+    ]);
     console.log('Admin user created (admin / admin123)');
 
     // Seed Categories
@@ -33,8 +36,11 @@ async function seed() {
         { id: 7, name: 'Return Gifts', slug: 'return-gifts', image: 'succulent-plant-pot.jpg', description: 'Eco plants, candles, potli bags & wedding favors 🎉', sort_order: 7 }
     ];
 
-    const insertCat = db.prepare('INSERT INTO categories (id, name, slug, image, description, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
-    categories.forEach(c => insertCat.run(c.id, c.name, c.slug, c.image, c.description, c.sort_order));
+    for (const c of categories) {
+        await db.run('INSERT INTO categories (id, name, slug, image, description, sort_order) VALUES (?, ?, ?, ?, ?, ?)', [
+            c.id, c.name, c.slug, c.image, c.description, c.sort_order
+        ]);
+    }
     console.log('Created 7 categories');
 
     // 70 Realistic Gift Products (10 per category)
@@ -474,17 +480,16 @@ async function seed() {
         }
     ];
 
-    const insertProd = db.prepare(`
-        INSERT INTO products (name, slug, description, price, compare_price, category_id, stock, is_featured, is_active, badge, images)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-    `);
-
-    products.forEach(p => {
-        insertProd.run(
-            p.name, p.slug, p.description, p.price, p.compare_price,
-            p.category_id, p.stock, p.is_featured, p.badge, JSON.stringify(p.images)
+    for (const p of products) {
+        await db.run(
+            `INSERT INTO products (name, slug, description, price, compare_price, category_id, stock, is_featured, is_active, badge, images)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+            [
+                p.name, p.slug, p.description, p.price, p.compare_price,
+                p.category_id, p.stock, p.is_featured, p.badge, JSON.stringify(p.images)
+            ]
         );
-    });
+    }
     console.log(`Created ${products.length} products with actual product images!`);
 
     // Seed Site Settings
@@ -502,11 +507,14 @@ async function seed() {
         { key: 'google_client_id', value: '' }
     ];
 
-    const insertSetting = db.prepare('INSERT INTO site_settings (key, value) VALUES (?, ?)');
-    settings.forEach(s => insertSetting.run(s.key, s.value));
+    for (const s of settings) {
+        await db.run('INSERT INTO site_settings (key, value) VALUES (?, ?)', [s.key, s.value]);
+    }
     console.log('Site settings seeded.');
-
     console.log('Seed completed successfully!');
 }
 
-seed();
+seed().then(() => process.exit(0)).catch(err => {
+    console.error('Seed failed:', err);
+    process.exit(1);
+});

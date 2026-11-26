@@ -12,7 +12,7 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Username and password are required' });
         }
 
-        const user = db.prepare('SELECT * FROM admin_users WHERE username = ?').get(username);
+        const user = await db.get('SELECT * FROM admin_users WHERE username = ?', [username]);
         if (!user) {
             return res.status(401).json({ success: false, error: 'Invalid credentials' });
         }
@@ -23,7 +23,7 @@ router.post('/login', async (req, res) => {
         }
 
         const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
-        
+
         res.json({ success: true, data: { token, user: { id: user.id, username: user.username, name: user.name } } });
     } catch (err) {
         console.error(err);
@@ -31,9 +31,9 @@ router.post('/login', async (req, res) => {
     }
 });
 
-router.get('/me', authenticateToken, (req, res) => {
+router.get('/me', authenticateToken, async (req, res) => {
     try {
-        const user = db.prepare('SELECT id, username, name, created_at FROM admin_users WHERE id = ?').get(req.user.id);
+        const user = await db.get('SELECT id, username, name, created_at FROM admin_users WHERE id = ?', [req.user.id]);
         if (!user) {
             return res.status(404).json({ success: false, error: 'User not found' });
         }
@@ -47,17 +47,20 @@ router.get('/me', authenticateToken, (req, res) => {
 router.post('/change-password', authenticateToken, async (req, res) => {
     try {
         const { currentPassword, newPassword } = req.body;
-        
-        const user = db.prepare('SELECT * FROM admin_users WHERE id = ?').get(req.user.id);
+
+        const user = await db.get('SELECT * FROM admin_users WHERE id = ?', [req.user.id]);
+        if (!user) {
+            return res.status(404).json({ success: false, error: 'User not found' });
+        }
         const isValid = await bcrypt.compare(currentPassword, user.password_hash);
-        
+
         if (!isValid) {
             return res.status(400).json({ success: false, error: 'Incorrect current password' });
         }
 
         const hashed = await bcrypt.hash(newPassword, 10);
-        db.prepare('UPDATE admin_users SET password_hash = ? WHERE id = ?').run(hashed, user.id);
-        
+        await db.run('UPDATE admin_users SET password_hash = ? WHERE id = ?', [hashed, user.id]);
+
         res.json({ success: true, data: 'Password updated successfully' });
     } catch (err) {
         console.error(err);

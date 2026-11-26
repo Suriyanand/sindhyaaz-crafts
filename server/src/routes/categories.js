@@ -16,12 +16,13 @@ const storage = multer.diskStorage({
         cb(null, uploadDir);
     },
     filename: function (req, file, cb) {
+        const ext = (path.extname(file.originalname) || '.jpg').toLowerCase();
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, uniqueSuffix + path.extname(file.originalname));
+        cb(null, uniqueSuffix + ext);
     }
 });
 
-const upload = multer({ 
+const upload = multer({
     storage: storage,
     limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 });
@@ -35,16 +36,44 @@ function slugify(text) {
         .replace(/-+$/, '');
 }
 
-router.get('/', (req, res) => {
+async function persistUploadedFile(file) {
+    if (!file) return;
     try {
-        const categories = db.prepare(`
-            SELECT c.*, COUNT(p.id) as product_count 
-            FROM categories c 
+        const buffer = fs.readFileSync(file.path);
+        await db.run(
+            `INSERT INTO uploaded_files (filename, mime_type, data_base64)
+             VALUES (?, ?, ?)
+             ON CONFLICT(filename) DO UPDATE SET mime_type = excluded.mime_type, data_base64 = excluded.data_base64`,
+            [file.filename, file.mimetype || 'image/jpeg', buffer.toString('base64')]
+        );
+    } catch (err) {
+        console.warn('Failed to persist category image to DB:', err.message);
+    }
+}
+
+router.get('/', async (req, res) => {
+    try {
+        const { search } = req.query;
+        let query = `
+            SELECT c.*, COUNT(p.id) as product_count
+            FROM categories c
             LEFT JOIN products p ON c.id = p.category_id AND p.is_active = 1
-            WHERE c.is_active = 1 
-            GROUP BY c.id 
-            ORDER BY c.sort_order ASC, c.id DESC
-        `).all();
+            WHERE c.is_active = 1
+        `;
+        const params = [];
+
+        if (search) {
+            query += ' AND LOWER(c.name) LIKE LOWER(?)';
+            params.push(`%${search}%`);
+        }
+
+        query += ' GROUP BY c.id ORDER BY c.sort_order ASC, c.id DESC';
+
+        const categories = await db.all(query, params);
+        categories.forEach(c => {
+            c.id = Number(c.id);
+            c.product_count = Number(c.product_count || 0);
+        });
         res.json({ success: true, data: categories });
     } catch (err) {
         console.error(err);
@@ -52,19 +81,23 @@ router.get('/', (req, res) => {
     }
 });
 
-router.get('/:slug', (req, res) => {
+router.get('/:slug', async (req, res) => {
     try {
-        const category = db.prepare('SELECT * FROM categories WHERE slug = ? AND is_active = 1').get(req.params.slug);
+        const category = await db.get('SELECT * FROM categories WHERE slug = ? AND is_active = 1', [req.params.slug]);
         if (!category) {
             return res.status(404).json({ success: false, error: 'Category not found' });
         }
-        
-        const products = db.prepare('SELECT * FROM products WHERE category_id = ? AND is_active = 1 ORDER BY id DESC').all(category.id);
+
+        const products = await db.all('SELECT * FROM products WHERE category_id = ? AND is_active = 1 ORDER BY id DESC', [category.id]);
         products.forEach(p => {
-            if (typeof p.images === 'string') p.images = JSON.parse(p.images || '[]');
-            if (typeof p.variants === 'string') p.variants = JSON.parse(p.variants || '[]');
+            if (typeof p.images === 'string') {
+                try { p.images = JSON.parse(p.images || '[]'); } catch (e) { p.images = []; }
+            }
+            if (typeof p.variants === 'string') {
+                try { p.variants = JSON.parse(p.variants || '[]'); } catch (e) { p.variants = []; }
+            }
         });
-        
+
         res.json({ success: true, data: { category, products } });
     } catch (err) {
         console.error(err);
@@ -72,7 +105,7 @@ router.get('/:slug', (req, res) => {
     }
 });
 
-router.post('/', authenticateToken, upload.single('image'), (req, res) => {
+router.post('/', authenticateToken, upload.single('image'), async (req, res) => {
     try {
         const { name, description, sort_order } = req.body;
         if (!name) {
@@ -81,17 +114,19 @@ router.post('/', authenticateToken, upload.single('image'), (req, res) => {
 
         let image = req.body.image || null;
         if (req.file) {
+            await persistUploadedFile(req.file);
             image = req.file.filename;
         }
 
-        let slug = slugify(name);
-        let check = db.prepare('SELECT id FROM categories WHERE slug = ?').get(slug);
+        let slug = slugify(name) || `category-${Date.now()}`;
+        const check = await db.get('SELECT id FROM categories WHERE slug = ?', [slug]);
         if (check) slug = `${slug}-${Date.now()}`;
 
-        const info = db.prepare('INSERT INTO categories (name, slug, image, description, sort_order) VALUES (?, ?, ?, ?, ?)').run(
-            name, slug, image, description || null, sort_order || 0
+        const info = await db.run(
+            'INSERT INTO categories (name, slug, image, description, sort_order) VALUES (?, ?, ?, ?, ?)',
+            [name.trim(), slug, image, description || null, parseInt(sort_order, 10) || 0]
         );
-        
+
         res.json({ success: true, data: { id: info.lastInsertRowid, slug } });
     } catch (err) {
         console.error(err);
@@ -99,40 +134,50 @@ router.post('/', authenticateToken, upload.single('image'), (req, res) => {
     }
 });
 
-router.put('/:id', authenticateToken, upload.single('image'), (req, res) => {
+router.put('/:id', authenticateToken, upload.single('image'), async (req, res) => {
     try {
-        const id = req.params.id;
+        const id = parseInt(req.params.id, 10);
         const { name, description, sort_order, is_active } = req.body;
-        
-        const existing = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
+
+        const existing = await db.get('SELECT * FROM categories WHERE id = ?', [id]);
         if (!existing) {
             return res.status(404).json({ success: false, error: 'Category not found' });
         }
 
         let image = existing.image;
         if (req.file) {
+            await persistUploadedFile(req.file);
             image = req.file.filename;
         } else if (req.body.image === 'null' || req.body.image === '') {
             image = null;
         }
 
         let slug = existing.slug;
-        if (name && name !== existing.name) {
-            slug = slugify(name);
-            let check = db.prepare('SELECT id FROM categories WHERE slug = ? AND id != ?').get(slug, id);
+        if (name && name.trim() !== existing.name) {
+            slug = slugify(name.trim()) || `category-${id}`;
+            const check = await db.get('SELECT id FROM categories WHERE slug = ? AND id != ?', [slug, id]);
             if (check) slug = `${slug}-${Date.now()}`;
         }
 
-        db.prepare(`
-            UPDATE categories SET 
-                name = COALESCE(?, name),
-                slug = COALESCE(?, slug),
+        await db.run(
+            `UPDATE categories SET
+                name = ?,
+                slug = ?,
                 image = ?,
                 description = ?,
-                sort_order = COALESCE(?, sort_order),
-                is_active = COALESCE(?, is_active)
-            WHERE id = ?
-        `).run(name, slug, image, description, sort_order, is_active, id);
+                sort_order = ?,
+                is_active = ?
+             WHERE id = ?`,
+            [
+                name ? name.trim() : existing.name,
+                slug,
+                image,
+                description !== undefined ? description : existing.description,
+                sort_order !== undefined && !Number.isNaN(parseInt(sort_order, 10)) ? parseInt(sort_order, 10) : existing.sort_order,
+                is_active !== undefined ? (is_active ? 1 : 0) : existing.is_active,
+                id
+            ]
+        );
 
         res.json({ success: true, data: 'Category updated' });
     } catch (err) {
@@ -141,9 +186,9 @@ router.put('/:id', authenticateToken, upload.single('image'), (req, res) => {
     }
 });
 
-router.delete('/:id', authenticateToken, (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
     try {
-        db.prepare('UPDATE categories SET is_active = 0 WHERE id = ?').run(req.params.id);
+        await db.run('UPDATE categories SET is_active = 0 WHERE id = ?', [parseInt(req.params.id, 10)]);
         res.json({ success: true, data: 'Category deleted (soft)' });
     } catch (err) {
         console.error(err);

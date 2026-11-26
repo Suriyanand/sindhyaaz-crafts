@@ -317,8 +317,8 @@
                 <div class="container newsletter-container scroll-animate scale-in">
                     <h2>Get Exclusive Deals 💌</h2>
                     <p>Join our newsletter for 10% off your first order!</p>
-                    <form class="newsletter-form" onsubmit="event.preventDefault(); alert('Subscribed!');">
-                        <input type="email" placeholder="Enter your email" required>
+                    <form class="newsletter-form" id="newsletterForm">
+                        <input type="email" id="newsletterEmail" placeholder="Enter your email" required>
                         <button type="submit" class="btn btn-primary">Subscribe</button>
                     </form>
                 </div>
@@ -482,7 +482,7 @@
             <span class="nav-icon">👤</span>
             <span>Account</span>
         </a>
-        <a href="#/" class="nav-item" id="mobileMenuTrigger">
+        <a href="javascript:void(0)" class="nav-item" id="mobileMenuTrigger">
             <span class="nav-icon">☰</span>
             <span>Menu</span>
         </a>
@@ -582,8 +582,8 @@
                 <h3 class="modal-title">Track Your Gift Order 📦</h3>
                 <p style="color: var(--color-text-muted); font-size: 0.9rem;">Enter your Order Number (e.g. GL-20261110-XXXX) to view real-time delivery progress</p>
             </div>
-            <form onsubmit="window.handleTrackOrder(event)" style="display:flex; gap:10px; margin-bottom:20px;">
-                <input type="text" id="trackOrderInput" placeholder="Enter Order Number (GL-...)" required style="flex:1; padding:12px 16px; border:2px solid var(--color-border); border-radius:var(--radius-sm); font-family:inherit; font-size:1rem; text-transform:uppercase;">
+            <form onsubmit="window.handleTrackOrder(event)" class="track-order-form">
+                <input type="text" id="trackOrderInput" placeholder="Enter Order Number (GL-...)" required style="flex:1; min-width:0; padding:12px 16px; border:2px solid var(--color-border); border-radius:var(--radius-sm); font-family:inherit; font-size:1rem; text-transform:uppercase;">
                 <button type="submit" class="btn btn-primary" style="padding:12px 24px;">Track 🔍</button>
             </form>
             <div id="trackOrderResult" style="display:none;">

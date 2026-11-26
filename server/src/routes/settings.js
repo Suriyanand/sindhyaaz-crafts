@@ -3,9 +3,9 @@ const router = express.Router();
 const db = require('../database');
 const { authenticateToken } = require('../middleware/auth');
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
     try {
-        const settingsList = db.prepare('SELECT key, value FROM site_settings').all();
+        const settingsList = await db.all('SELECT key, value FROM site_settings');
         const settings = {};
         settingsList.forEach(s => {
             settings[s.key] = s.value;
@@ -17,30 +17,52 @@ router.get('/', (req, res) => {
     }
 });
 
-router.put('/', authenticateToken, (req, res) => {
+router.put('/', authenticateToken, async (req, res) => {
     try {
-        const settings = req.body; // Expects an object { key1: value1, key2: value2 }
+        const settings = req.body;
         if (!settings || typeof settings !== 'object') {
             return res.status(400).json({ success: false, error: 'Invalid data format' });
         }
 
-        const stmt = db.prepare(`
-            INSERT INTO site_settings (key, value) 
-            VALUES (?, ?) 
-            ON CONFLICT(key) DO UPDATE SET value=excluded.value
-        `);
-        
-        const updateTransaction = db.transaction((settingsObj) => {
-            for (const [key, value] of Object.entries(settingsObj)) {
-                stmt.run(key, value !== null && value !== undefined ? String(value) : '');
-            }
-        });
+        for (const [key, value] of Object.entries(settings)) {
+            await db.run(
+                `INSERT INTO site_settings (key, value)
+                 VALUES (?, ?)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+                [key, value !== null && value !== undefined ? String(value) : '']
+            );
+        }
 
-        updateTransaction(settings);
         res.json({ success: true, data: 'Settings updated' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// Export full store backup as JSON (admin only)
+router.get('/backup', authenticateToken, async (req, res) => {
+    try {
+        const categories = await db.all('SELECT * FROM categories ORDER BY id ASC');
+        const products = await db.all('SELECT * FROM products ORDER BY id ASC');
+        const site_settings = await db.all('SELECT * FROM site_settings');
+        const orders = await db.all('SELECT * FROM orders ORDER BY id ASC');
+        const uploaded_files = await db.all('SELECT * FROM uploaded_files');
+
+        res.json({
+            success: true,
+            data: {
+                exported_at: new Date().toISOString(),
+                categories,
+                products,
+                site_settings,
+                orders,
+                uploaded_files
+            }
+        });
+    } catch (err) {
+        console.error('Backup export error:', err);
+        res.status(500).json({ success: false, error: 'Failed to export backup' });
     }
 });
 

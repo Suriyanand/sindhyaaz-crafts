@@ -15,18 +15,17 @@ router.post('/register', async (req, res) => {
 
         const normalizedEmail = email.trim().toLowerCase();
 
-        // Check if user already exists
-        const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
+        const existing = await db.get('SELECT id FROM users WHERE email = ?', [normalizedEmail]);
         if (existing) {
             return res.status(400).json({ success: false, error: 'An account with this email already exists' });
         }
 
         const password_hash = await bcrypt.hash(password, 10);
-        const stmt = db.prepare(`
-            INSERT INTO users (name, email, password_hash, phone, auth_provider)
-            VALUES (?, ?, ?, ?, 'local')
-        `);
-        const info = stmt.run(name.trim(), normalizedEmail, password_hash, phone ? phone.trim() : null);
+        const info = await db.run(
+            `INSERT INTO users (name, email, password_hash, phone, auth_provider)
+             VALUES (?, ?, ?, ?, 'local')`,
+            [name.trim(), normalizedEmail, password_hash, phone ? phone.trim() : null]
+        );
 
         const token = jwt.sign(
             { id: info.lastInsertRowid, email: normalizedEmail, name: name.trim(), role: 'customer' },
@@ -61,7 +60,7 @@ router.post('/login', async (req, res) => {
         }
 
         const normalizedEmail = email.trim().toLowerCase();
-        const user = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizedEmail);
+        const user = await db.get('SELECT * FROM users WHERE email = ?', [normalizedEmail]);
 
         if (!user) {
             return res.status(401).json({ success: false, error: 'Invalid email or password' });
@@ -123,26 +122,25 @@ router.post('/google-login', async (req, res) => {
         }
 
         const normalizedEmail = email.trim().toLowerCase();
-        let user = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizedEmail);
+        let user = await db.get('SELECT * FROM users WHERE email = ?', [normalizedEmail]);
 
         if (!user) {
-            // Create user
-            const stmt = db.prepare(`
-                INSERT INTO users (name, email, google_id, avatar, auth_provider)
-                VALUES (?, ?, ?, ?, 'google')
-            `);
-            const info = stmt.run(name || normalizedEmail.split('@')[0], normalizedEmail, google_id || null, avatar || null);
+            const info = await db.run(
+                `INSERT INTO users (name, email, google_id, avatar, auth_provider)
+                 VALUES (?, ?, ?, ?, 'google')`,
+                [name || normalizedEmail.split('@')[0], normalizedEmail, google_id || null, avatar || null]
+            );
             user = {
                 id: info.lastInsertRowid,
                 name: name || normalizedEmail.split('@')[0],
                 email: normalizedEmail,
                 avatar: avatar || null
             };
-        } else {
-            // Update google_id and avatar if missing
-            if (!user.google_id && google_id) {
-                db.prepare('UPDATE users SET google_id = ?, avatar = COALESCE(avatar, ?) WHERE id = ?').run(google_id, avatar || null, user.id);
-            }
+        } else if (!user.google_id && google_id) {
+            await db.run(
+                'UPDATE users SET google_id = ?, avatar = COALESCE(avatar, ?) WHERE id = ?',
+                [google_id, avatar || null, user.id]
+            );
         }
 
         const token = jwt.sign(
@@ -171,9 +169,9 @@ router.post('/google-login', async (req, res) => {
 });
 
 // Get Current User Profile
-router.get('/me', authenticateToken, (req, res) => {
+router.get('/me', authenticateToken, async (req, res) => {
     try {
-        const user = db.prepare('SELECT id, name, email, phone, avatar, auth_provider, created_at FROM users WHERE id = ?').get(req.user.id);
+        const user = await db.get('SELECT id, name, email, phone, avatar, auth_provider, created_at FROM users WHERE id = ?', [req.user.id]);
         if (!user) {
             return res.status(404).json({ success: false, error: 'User not found' });
         }
@@ -185,16 +183,17 @@ router.get('/me', authenticateToken, (req, res) => {
 });
 
 // Get Current User's Orders
-router.get('/orders', authenticateToken, (req, res) => {
+router.get('/orders', authenticateToken, async (req, res) => {
     try {
         const userEmail = req.user.email;
         const userId = req.user.id;
 
-        const orders = db.prepare(`
-            SELECT * FROM orders 
-            WHERE user_id = ? OR email = ?
-            ORDER BY id DESC
-        `).all(userId, userEmail);
+        const orders = await db.all(
+            `SELECT * FROM orders
+             WHERE user_id = ? OR LOWER(email) = LOWER(?)
+             ORDER BY id DESC`,
+            [userId, userEmail]
+        );
 
         orders.forEach(o => {
             if (typeof o.items === 'string') {
@@ -210,14 +209,14 @@ router.get('/orders', authenticateToken, (req, res) => {
 });
 
 // Public Track Order Endpoint
-router.post('/track-order', (req, res) => {
+router.post('/track-order', async (req, res) => {
     try {
         const { order_number, phone } = req.body;
         if (!order_number) {
             return res.status(400).json({ success: false, error: 'Order number is required' });
         }
 
-        let query = 'SELECT * FROM orders WHERE order_number = ?';
+        let query = 'SELECT * FROM orders WHERE UPPER(order_number) = UPPER(?)';
         const params = [order_number.trim()];
 
         if (phone) {
@@ -225,7 +224,7 @@ router.post('/track-order', (req, res) => {
             params.push(`%${phone.trim()}%`);
         }
 
-        const order = db.prepare(query).get(...params);
+        const order = await db.get(query, params);
         if (!order) {
             return res.status(404).json({ success: false, error: 'No order found with the provided details' });
         }

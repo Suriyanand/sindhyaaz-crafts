@@ -11,7 +11,7 @@ function generateOrderNumber() {
     return `GL-${dateStr}-${randomStr}`;
 }
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
     try {
         let {
             customer_name, phone, email, address, city, state, pincode,
@@ -19,7 +19,6 @@ router.post('/', (req, res) => {
             payment_status, notes, customer, totalAmount, user_id
         } = req.body;
 
-        // Support nested customer object from checkout form
         if (customer && typeof customer === 'object') {
             customer_name = customer_name || `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || customer.name;
             phone = phone || customer.phone;
@@ -33,10 +32,9 @@ router.post('/', (req, res) => {
 
         total = total !== undefined ? total : totalAmount;
         if (subtotal === undefined && total !== undefined) {
-            subtotal = total - (shipping || 0);
+            subtotal = Number(total) - Number(shipping || 0);
         }
 
-        // Try extracting user from optional authorization header
         if (!user_id && req.headers['authorization']) {
             try {
                 const token = req.headers['authorization'].split(' ')[1];
@@ -55,15 +53,17 @@ router.post('/', (req, res) => {
         }
 
         const order_number = generateOrderNumber();
-        
-        const info = db.prepare(`
-            INSERT INTO orders (order_number, customer_name, phone, email, address, city, state, pincode, items, subtotal, shipping, total, payment_id, payment_order_id, payment_status, notes, user_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-            order_number, customer_name, phone, email || null, address, city || null, state || null, pincode,
-            typeof items === 'string' ? items : JSON.stringify(items),
-            subtotal || 0, shipping || 0, total, payment_id || null, payment_order_id || null, payment_status || 'pending', notes || null,
-            user_id || null
+
+        const info = await db.run(
+            `INSERT INTO orders (order_number, customer_name, phone, email, address, city, state, pincode, items, subtotal, shipping, total, payment_id, payment_order_id, payment_status, notes, user_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                order_number, customer_name, phone, email || null, address, city || null, state || null, pincode,
+                typeof items === 'string' ? items : JSON.stringify(items),
+                Number(subtotal || 0), Number(shipping || 0), Number(total),
+                payment_id || null, payment_order_id || null, payment_status || 'pending',
+                notes || null, user_id ? parseInt(user_id, 10) : null
+            ]
         );
 
         res.json({
@@ -71,7 +71,7 @@ router.post('/', (req, res) => {
             data: {
                 id: info.lastInsertRowid,
                 order_number,
-                total,
+                total: Number(total),
                 status: 'pending'
             }
         });
@@ -81,39 +81,47 @@ router.post('/', (req, res) => {
     }
 });
 
-router.get('/', authenticateToken, (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
     try {
-        const { status, date_from, date_to, search, page = 1, limit = 20 } = req.query;
-        let query = 'SELECT * FROM orders WHERE 1=1';
+        const { status, date_from, date_to, search, page = 1, limit = 50 } = req.query;
+        let whereClause = 'WHERE 1=1';
         const params = [];
 
         if (status) {
-            query += ' AND order_status = ?';
-            params.push(status);
+            if (status.toLowerCase() === 'processing' || status.toLowerCase() === 'confirmed') {
+                whereClause += " AND (LOWER(order_status) = 'processing' OR LOWER(order_status) = 'confirmed')";
+            } else {
+                whereClause += ' AND LOWER(order_status) = LOWER(?)';
+                params.push(status);
+            }
         }
         if (date_from) {
-            query += ' AND created_at >= ?';
+            whereClause += ' AND created_at >= ?';
             params.push(date_from);
         }
         if (date_to) {
-            query += ' AND created_at <= ?';
+            whereClause += ' AND created_at <= ?';
             params.push(date_to + ' 23:59:59');
         }
         if (search) {
-            query += ' AND (order_number LIKE ? OR customer_name LIKE ? OR phone LIKE ?)';
+            whereClause += ' AND (LOWER(order_number) LIKE LOWER(?) OR LOWER(customer_name) LIKE LOWER(?) OR phone LIKE ?)';
             params.push(`%${search}%`, `%${search}%`, `%${search}%`);
         }
 
-        const countQuery = `SELECT COUNT(*) as count FROM (${query})`;
-        const totalRows = db.prepare(countQuery).get(...params).count;
+        const totalRows = Number((await db.get(`SELECT COUNT(*) as count FROM orders ${whereClause}`, params))?.count || 0);
 
-        query += ' ORDER BY id DESC LIMIT ? OFFSET ?';
-        const offset = (parseInt(page) - 1) * parseInt(limit);
-        params.push(parseInt(limit), offset);
+        const parsedLimit = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+        const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+        const offset = (parsedPage - 1) * parsedLimit;
 
-        const orders = db.prepare(query).all(...params);
+        const orders = await db.all(
+            `SELECT * FROM orders ${whereClause} ORDER BY id DESC LIMIT ? OFFSET ?`,
+            [...params, parsedLimit, offset]
+        );
         orders.forEach(o => {
-            if (typeof o.items === 'string') o.items = JSON.parse(o.items || '[]');
+            if (typeof o.items === 'string') {
+                try { o.items = JSON.parse(o.items || '[]'); } catch (e) { o.items = []; }
+            }
         });
 
         res.json({
@@ -121,8 +129,8 @@ router.get('/', authenticateToken, (req, res) => {
             data: {
                 orders,
                 total: totalRows,
-                page: parseInt(page),
-                totalPages: Math.ceil(totalRows / parseInt(limit))
+                page: parsedPage,
+                totalPages: Math.ceil(totalRows / parsedLimit)
             }
         });
     } catch (err) {
@@ -131,13 +139,15 @@ router.get('/', authenticateToken, (req, res) => {
     }
 });
 
-router.get('/:id', authenticateToken, (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
     try {
-        const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
+        const order = await db.get('SELECT * FROM orders WHERE id = ?', [parseInt(req.params.id, 10)]);
         if (!order) {
             return res.status(404).json({ success: false, error: 'Order not found' });
         }
-        if (typeof order.items === 'string') order.items = JSON.parse(order.items || '[]');
+        if (typeof order.items === 'string') {
+            try { order.items = JSON.parse(order.items || '[]'); } catch (e) { order.items = []; }
+        }
         res.json({ success: true, data: order });
     } catch (err) {
         console.error(err);
@@ -145,7 +155,7 @@ router.get('/:id', authenticateToken, (req, res) => {
     }
 });
 
-router.put('/:id/status', authenticateToken, (req, res) => {
+router.put('/:id/status', authenticateToken, async (req, res) => {
     try {
         const order_status = req.body.order_status || req.body.status;
         const tracking_number = req.body.tracking_number;
@@ -155,8 +165,7 @@ router.put('/:id/status', authenticateToken, (req, res) => {
         if (!order_status && !payment_status) {
             return res.status(400).json({ success: false, error: 'order_status or payment_status is required' });
         }
-        
-        let query = 'UPDATE orders SET ';
+
         const sets = [];
         const params = [];
 
@@ -177,10 +186,10 @@ router.put('/:id/status', authenticateToken, (req, res) => {
             params.push(courier_name);
         }
 
-        query += sets.join(', ') + ' WHERE id = ?';
-        params.push(req.params.id);
+        const query = `UPDATE orders SET ${sets.join(', ')} WHERE id = ?`;
+        params.push(parseInt(req.params.id, 10));
 
-        db.prepare(query).run(...params);
+        await db.run(query, params);
         res.json({ success: true, data: 'Order updated successfully' });
     } catch (err) {
         console.error(err);

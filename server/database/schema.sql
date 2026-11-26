@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS orders (
     tracking_number TEXT,
     courier_name TEXT,
     notes TEXT,
+    user_id INTEGER,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -73,5 +74,12 @@ CREATE TABLE IF NOT EXISTS users (
     avatar TEXT,
     auth_provider TEXT DEFAULT 'local',
     google_id TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS uploaded_files (
+    filename TEXT PRIMARY KEY,
+    mime_type TEXT NOT NULL,
+    data_base64 TEXT NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );

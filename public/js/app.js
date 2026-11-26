@@ -32,6 +32,16 @@ const getPlaceholderImage = (name) => {
     return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="100%" height="100%" fill="hsl(${hue}, 70%, 92%)"/><text x="50%" y="50%" font-family="sans-serif" font-size="28" font-weight="bold" fill="hsl(${hue}, 70%, 35%)" text-anchor="middle" dominant-baseline="middle">${(name || 'G').charAt(0).toUpperCase()}</text></svg>`;
 };
 
+const resolveImageUrl = (img, fallbackName = 'Product') => {
+    if (!img) return getPlaceholderImage(fallbackName);
+    const s = String(img).trim();
+    if (!s) return getPlaceholderImage(fallbackName);
+    if (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('data:') || s.startsWith('/uploads/')) {
+        return s;
+    }
+    return `${CONFIG.UPLOADS_BASE}/${s.replace(/^\/+/, '')}`;
+};
+
 const showToast = (message, type = 'success') => {
     const container = document.getElementById('toastContainer');
     if (!container) return;
@@ -53,7 +63,8 @@ const showToast = (message, type = 'success') => {
 
 // --- API Service ---
 const api = {
-    async fetch(endpoint, options = {}, isRetry = false) {
+    async fetch(endpoint, options = {}, attempt = 0) {
+        const isGet = !options.method || options.method.toUpperCase() === 'GET';
         try {
             const headers = {
                 'Content-Type': 'application/json',
@@ -68,6 +79,13 @@ const api = {
                 headers
             });
 
+            if ((res.status === 502 || res.status === 503 || res.status === 504) && isGet && attempt < 4) {
+                const waitMs = (attempt + 1) * 2500;
+                console.info(`Server starting (${res.status}), retrying ${endpoint} in ${waitMs}ms...`);
+                await new Promise(r => setTimeout(r, waitMs));
+                return await this.fetch(endpoint, options, attempt + 1);
+            }
+
             const json = await res.json().catch(() => ({}));
             if (!res.ok) {
                 throw new Error(json.error || `HTTP ${res.status}`);
@@ -75,16 +93,21 @@ const api = {
             return json.data !== undefined ? json.data : json;
         } catch (error) {
             console.warn(`API call to ${endpoint} failed:`, error.message);
-            if (!isRetry && (error.message.includes('Failed to fetch') || error.message.includes('NetworkError'))) {
-                console.info('Server waking up, auto-retrying in 2.5s...');
-                await new Promise(r => setTimeout(r, 2500));
-                return await this.fetch(endpoint, options, true);
+            const isNetworkErr = error.message.includes('Failed to fetch') || error.message.includes('NetworkError');
+            if (isGet && attempt < 3 && isNetworkErr) {
+                const waitMs = (attempt + 1) * 2500;
+                if (attempt === 0) showToast('Waking up store server, please wait a moment...', 'info');
+                await new Promise(r => setTimeout(r, waitMs));
+                return await this.fetch(endpoint, options, attempt + 1);
             }
             return null;
         }
     },
     async getSettings() {
         return await this.fetch('/settings');
+    },
+    async getCategories() {
+        return await this.fetch('/categories');
     },
     async getProducts(params = '') {
         return await this.fetch(`/products${params ? '?' + params : ''}`);
@@ -152,7 +175,7 @@ const cartManager = {
         } else {
             let img = null;
             if (product.images && product.images.length > 0) {
-                img = product.images[0].startsWith('http') ? product.images[0] : `${CONFIG.UPLOADS_BASE}/${product.images[0]}`;
+                img = resolveImageUrl(product.images[0], product.name);
             } else {
                 img = getPlaceholderImage(product.name);
             }
@@ -251,7 +274,7 @@ const createProductCard = (product) => {
     
     let imageUrl = getPlaceholderImage(product.name || 'Product');
     if (product.images && product.images.length > 0) {
-        imageUrl = product.images[0].startsWith('http') ? product.images[0] : `${CONFIG.UPLOADS_BASE}/${product.images[0]}`;
+        imageUrl = resolveImageUrl(product.images[0], product.name);
     }
 
     state.productsCache[product.id] = product;
@@ -320,20 +343,20 @@ const initScrollAnimations = () => {
 // --- Page Renderers ---
 
 const renderHome = async () => {
-    let result = await api.getProducts('limit=30');
+    let result = await api.getProducts('active=true&limit=100');
     let products = (result && result.products) ? result.products : getMockProducts();
 
     const featuredGrid = document.getElementById('featuredProducts');
     const newArrivalsGrid = document.getElementById('newArrivals');
 
     if (featuredGrid) {
-        const featured = products.filter(p => p.is_featured === 1 || p.is_featured === true);
+        const featured = products.filter(p => Number(p.is_featured) === 1 || p.is_featured === true);
         const displayFeatured = featured.length >= 4 ? featured.slice(0, 12) : products.slice(0, 12);
         featuredGrid.innerHTML = displayFeatured.map(p => createProductCard(p)).join('');
     }
 
     if (newArrivalsGrid) {
-        newArrivalsGrid.innerHTML = products.slice(0, 12).map(p => createProductCard(p)).join('');
+        newArrivalsGrid.innerHTML = products.slice(0, 16).map(p => createProductCard(p)).join('');
     }
 
     cartManager.syncAllCardButtons();
@@ -354,14 +377,14 @@ const renderCategory = async (slug) => {
     container.innerHTML = `<div class="skeleton-grid"><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div></div>`;
 
     let sortParam = state.currentCategorySort || 'newest';
-    let res = await api.getProducts(`category=${slug}&sort=${sortParam}`);
+    let res = await api.getProducts(`category=${encodeURIComponent(slug)}&active=true&limit=100&sort=${sortParam}`);
     let products = res?.products;
 
-    if (!products || products.length === 0) {
+    if (!res) {
         products = getMockProducts().filter(p => p.category === slug || slug === 'all');
     }
 
-    if (products.length === 0) {
+    if (!products || products.length === 0) {
         container.innerHTML = `
             <div class="empty-state w-100" style="grid-column: 1/-1; padding: 60px 20px; text-align: center;">
                 <div style="font-size: 3rem; margin-bottom: 12px;">🎁</div>
@@ -392,7 +415,7 @@ const renderProduct = async (slug) => {
     
     let imageUrl = getPlaceholderImage(product.name);
     if (product.images && product.images.length > 0) {
-        imageUrl = product.images[0].startsWith('http') ? product.images[0] : `${CONFIG.UPLOADS_BASE}/${product.images[0]}`;
+        imageUrl = resolveImageUrl(product.images[0], product.name);
     }
 
     const hasDiscount = product.compare_price && product.compare_price > product.price;
@@ -531,25 +554,27 @@ const renderCart = () => {
 
             <!-- Items List -->
             ${state.cart.map(item => `
-                <div class="cart-item" style="display:flex; align-items:center; gap:16px; background:white; padding:16px; border-radius:var(--radius-md); margin-bottom:14px; box-shadow:var(--shadow-sm); border:1px solid var(--color-border);">
-                    <img src="${item.image}" alt="${item.name}" style="width:75px; height:75px; border-radius:var(--radius-sm); object-fit:cover;" onerror="this.onerror=null;this.src='${getPlaceholderImage(item.name)}'">
-                    <div style="flex:1;">
-                        <a href="#/product/${item.slug || item.id}" style="color:var(--color-text-dark); text-decoration:none; font-weight:600; font-size:0.95rem; display:block; margin-bottom:4px;">
+                <div class="cart-item cart-item-row">
+                    <img src="${item.image}" alt="${item.name}" class="cart-item-thumb" onerror="this.onerror=null;this.src='${getPlaceholderImage(item.name)}'">
+                    <div class="cart-item-info">
+                        <a href="#/product/${item.slug || item.id}" class="cart-item-link">
                             ${item.name}
                         </a>
                         <div style="color:var(--color-primary); font-weight:700;">${formatPrice(item.price)}</div>
                     </div>
-                    <div class="card-qty-controller" style="width:110px;">
-                        <button class="card-qty-btn minus" onclick="cartManager.updateQuantity('${item.id}', ${item.quantity - 1})">−</button>
-                        <span class="card-qty-value">${item.quantity}</span>
-                        <button class="card-qty-btn plus" onclick="cartManager.updateQuantity('${item.id}', ${item.quantity + 1})">+</button>
+                    <div class="cart-item-controls">
+                        <div class="card-qty-controller" style="width:105px;">
+                            <button class="card-qty-btn minus" onclick="cartManager.updateQuantity('${item.id}', ${item.quantity - 1})">−</button>
+                            <span class="card-qty-value">${item.quantity}</span>
+                            <button class="card-qty-btn plus" onclick="cartManager.updateQuantity('${item.id}', ${item.quantity + 1})">+</button>
+                        </div>
+                        <div class="cart-item-subtotal">
+                            ${formatPrice(item.price * item.quantity)}
+                        </div>
+                        <button type="button" class="remove-btn" onclick="cartManager.remove('${item.id}')" title="Remove item" style="background:transparent; border:none; font-size:1.15rem; cursor:pointer; color:var(--color-error); padding:6px;">
+                            🗑️
+                        </button>
                     </div>
-                    <div style="font-weight:700; min-width:80px; text-align:right;">
-                        ${formatPrice(item.price * item.quantity)}
-                    </div>
-                    <button type="button" class="remove-btn" onclick="cartManager.remove('${item.id}')" title="Remove item" style="background:transparent; border:none; font-size:1.2rem; cursor:pointer; color:var(--color-error); padding:6px;">
-                        🗑️
-                    </button>
                 </div>
             `).join('')}
         </div>
@@ -606,8 +631,8 @@ const renderCheckout = () => {
     const upiQrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiPayUrl)}`;
 
     container.innerHTML = `
-        <div class="checkout-form-container" style="background: white; padding: 28px; border-radius: var(--radius-md); box-shadow: var(--shadow-sm); border:1px solid var(--color-border);">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <div class="checkout-form-container">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:8px;">
                 <h3 style="font-family:var(--font-heading); margin:0;">Shipping & Delivery Details</h3>
                 ${!state.user ? `
                     <button type="button" onclick="window.openUserModal()" style="background:transparent; border:none; color:var(--color-primary); font-weight:600; cursor:pointer; font-size:0.88rem;">
@@ -619,50 +644,50 @@ const renderCheckout = () => {
             </div>
 
             <form id="checkoutForm" onsubmit="window.handlePlaceOrder(event)">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom:14px;">
+                <div class="checkout-row-2">
                     <div>
                         <label class="form-label" style="display:block; margin-bottom:6px; font-weight:600; font-size:0.85rem;">First Name *</label>
-                        <input type="text" name="firstName" value="${firstName}" class="form-control" required style="width:100%; padding:11px 14px; border:1px solid var(--color-border); border-radius:var(--radius-sm); font-family:inherit;">
+                        <input type="text" name="firstName" value="${firstName}" class="form-control" required>
                     </div>
                     <div>
                         <label class="form-label" style="display:block; margin-bottom:6px; font-weight:600; font-size:0.85rem;">Last Name</label>
-                        <input type="text" name="lastName" value="${lastName}" class="form-control" style="width:100%; padding:11px 14px; border:1px solid var(--color-border); border-radius:var(--radius-sm); font-family:inherit;">
+                        <input type="text" name="lastName" value="${lastName}" class="form-control">
                     </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom:14px;">
+                <div class="checkout-row-2">
                     <div>
                         <label class="form-label" style="display:block; margin-bottom:6px; font-weight:600; font-size:0.85rem;">Phone / WhatsApp * (10 Digits)</label>
-                        <input type="tel" name="phone" value="${user.phone || ''}" placeholder="9876543210" pattern="[0-9]{10}" class="form-control" required style="width:100%; padding:11px 14px; border:1px solid var(--color-border); border-radius:var(--radius-sm); font-family:inherit;">
+                        <input type="tel" name="phone" value="${user.phone || ''}" placeholder="9876543210" pattern="[0-9]{10}" class="form-control" required>
                     </div>
                     <div>
                         <label class="form-label" style="display:block; margin-bottom:6px; font-weight:600; font-size:0.85rem;">Email Address (For Invoices)</label>
-                        <input type="email" name="email" value="${user.email || ''}" placeholder="name@example.com" class="form-control" style="width:100%; padding:11px 14px; border:1px solid var(--color-border); border-radius:var(--radius-sm); font-family:inherit;">
+                        <input type="email" name="email" value="${user.email || ''}" placeholder="name@example.com" class="form-control">
                     </div>
                 </div>
 
                 <div style="margin-bottom:14px;">
                     <label class="form-label" style="display:block; margin-bottom:6px; font-weight:600; font-size:0.85rem;">Street Address / House No. *</label>
-                    <input type="text" name="address1" placeholder="Flat No., Building Name, Street" class="form-control" required style="width:100%; padding:11px 14px; border:1px solid var(--color-border); border-radius:var(--radius-sm); font-family:inherit;">
+                    <input type="text" name="address1" placeholder="Flat No., Building Name, Street" class="form-control" required>
                 </div>
 
                 <div style="margin-bottom:14px;">
                     <label class="form-label" style="display:block; margin-bottom:6px; font-weight:600; font-size:0.85rem;">Landmark / Area (Optional)</label>
-                    <input type="text" name="address2" placeholder="Near Temple / School / Bus Stop" class="form-control" style="width:100%; padding:11px 14px; border:1px solid var(--color-border); border-radius:var(--radius-sm); font-family:inherit;">
+                    <input type="text" name="address2" placeholder="Near Temple / School / Bus Stop" class="form-control">
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom:24px;">
+                <div class="checkout-row-3">
                     <div>
                         <label class="form-label" style="display:block; margin-bottom:6px; font-weight:600; font-size:0.85rem;">City / Town *</label>
-                        <input type="text" name="city" class="form-control" required style="width:100%; padding:11px 14px; border:1px solid var(--color-border); border-radius:var(--radius-sm); font-family:inherit;">
+                        <input type="text" name="city" class="form-control" required>
                     </div>
                     <div>
                         <label class="form-label" style="display:block; margin-bottom:6px; font-weight:600; font-size:0.85rem;">State *</label>
-                        <input type="text" name="state" placeholder="Tamil Nadu" class="form-control" required style="width:100%; padding:11px 14px; border:1px solid var(--color-border); border-radius:var(--radius-sm); font-family:inherit;">
+                        <input type="text" name="state" placeholder="Tamil Nadu" class="form-control" required>
                     </div>
                     <div>
                         <label class="form-label" style="display:block; margin-bottom:6px; font-weight:600; font-size:0.85rem;">Pincode *</label>
-                        <input type="text" name="pincode" placeholder="600001" pattern="[0-9]{6}" class="form-control" required style="width:100%; padding:11px 14px; border:1px solid var(--color-border); border-radius:var(--radius-sm); font-family:inherit;">
+                        <input type="text" name="pincode" placeholder="600001" pattern="[0-9]{6}" class="form-control" required>
                     </div>
                 </div>
 
@@ -944,7 +969,7 @@ const renderSearch = async (query) => {
     if (!container) return;
     container.innerHTML = `<div class="skeleton-grid"><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div></div>`;
 
-    let res = await api.getProducts(query ? `search=${encodeURIComponent(query)}` : '');
+    let res = await api.getProducts((query ? `search=${encodeURIComponent(query)}&` : '') + 'active=true&limit=100');
     let products = res?.products;
 
     if (!products) {
@@ -1465,7 +1490,7 @@ const router = () => {
     });
 };
 
-// --- Store Settings Loader ---
+// --- Store Settings & Dynamic Categories Loader ---
 const loadStoreSettings = async () => {
     try {
         const s = await api.getSettings();
@@ -1474,6 +1499,10 @@ const loadStoreSettings = async () => {
             if (s.whatsapp) CONFIG.WHATSAPP_NUMBER = s.whatsapp.replace(/[^0-9]/g, '');
             if (s.shop_name) CONFIG.STORE_NAME = s.shop_name;
             if (s.free_shipping_threshold) CONFIG.FREE_SHIPPING_THRESHOLD = parseFloat(s.free_shipping_threshold);
+            if (s.announcement) {
+                const marquee = document.querySelector('.announcement-bar .marquee span');
+                if (marquee) marquee.textContent = s.announcement;
+            }
             
             // Initialize Google Identity Services if client ID is configured
             window.initGoogleIdentity();
@@ -1483,10 +1512,46 @@ const loadStoreSettings = async () => {
     }
 };
 
+const loadDynamicCategories = async () => {
+    try {
+        const categories = await api.getCategories();
+        if (!Array.isArray(categories) || categories.length === 0) return;
+
+        const iconMap = {
+            'personalized-gifts': '✍️',
+            'photo-gifts': '📸',
+            'mugs-bottles': '☕',
+            'keychains': '🔑',
+            'home-decor': '🏠',
+            'combo-sets': '🎀',
+            'return-gifts': '🎉'
+        };
+
+        const scrollEl = document.querySelector('.categories-scroll');
+        if (scrollEl) {
+            scrollEl.innerHTML = categories.map(c => `
+                <a href="#/category/${c.slug}" class="category-bubble">
+                    <div class="bubble-icon">${iconMap[c.slug] || '🎁'}</div>
+                    <span>${c.name}</span>
+                </a>
+            `).join('');
+        }
+
+        const mobileNav = document.querySelector('.mobile-nav');
+        if (mobileNav) {
+            mobileNav.innerHTML = `<a href="#/">Home</a>` +
+                categories.map(c => `<a href="#/category/${c.slug}">${c.name}</a>`).join('');
+        }
+    } catch (e) {
+        console.warn('Could not refresh dynamic categories:', e);
+    }
+};
+
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
-    // Load Settings & Initialize Integrations
+    // Load Settings, Categories & Initialize Integrations
     loadStoreSettings();
+    loadDynamicCategories();
 
     // Background keep-alive to mitigate Render free-tier cold starts
     setInterval(() => { api.getSettings(); }, 240000);
@@ -1515,13 +1580,58 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('closeMenuBtn')?.addEventListener('click', () => {
         mobileMenuOverlay?.classList.remove('active');
     });
+    mobileMenuOverlay?.addEventListener('click', (e) => {
+        if (e.target === mobileMenuOverlay || e.target.tagName === 'A') {
+            mobileMenuOverlay.classList.remove('active');
+        }
+    });
 
     // Search Bar (Desktop & Mobile)
     const handleSearch = (inputEl) => {
         const query = (inputEl?.value || '').trim();
+        const sugBox = document.getElementById('searchSuggestions');
+        if (sugBox) sugBox.style.display = 'none';
         window.location.hash = query ? `#/search?q=${encodeURIComponent(query)}` : `#/search`;
         if (inputEl) inputEl.value = '';
     };
+
+    // Live Search Suggestions
+    const desktopSearchInput = document.getElementById('searchInput');
+    const searchSugBox = document.getElementById('searchSuggestions');
+    if (desktopSearchInput && searchSugBox) {
+        let searchTimer;
+        desktopSearchInput.addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            const q = desktopSearchInput.value.trim();
+            if (q.length < 2) {
+                searchSugBox.style.display = 'none';
+                return;
+            }
+            searchTimer = setTimeout(async () => {
+                const res = await api.getProducts(`search=${encodeURIComponent(q)}&active=true&limit=6`);
+                const items = res?.products || [];
+                if (items.length === 0) {
+                    searchSugBox.style.display = 'none';
+                    return;
+                }
+                searchSugBox.innerHTML = items.map(p => `
+                    <a href="#/product/${p.slug || p.id}" class="search-suggestion-item" onclick="document.getElementById('searchSuggestions').style.display='none'">
+                        <img src="${resolveImageUrl(p.images?.[0], p.name)}" alt="${p.name}" onerror="this.onerror=null;this.src='${getPlaceholderImage(p.name)}'">
+                        <div>
+                            <div style="font-weight:600; font-size:0.9rem;">${p.name}</div>
+                            <div style="color:var(--color-primary); font-weight:700; font-size:0.85rem;">${formatPrice(p.price)}</div>
+                        </div>
+                    </a>
+                `).join('');
+                searchSugBox.style.display = 'block';
+            }, 250);
+        });
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-container')) {
+                searchSugBox.style.display = 'none';
+            }
+        });
+    }
 
     document.querySelectorAll('.search-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -1551,14 +1661,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Newsletter Subscription Form
-    const newsletterForm = document.querySelector('.newsletter-box form');
+    const newsletterForm = document.getElementById('newsletterForm');
     if (newsletterForm) {
         newsletterForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const input = newsletterForm.querySelector('input[type="email"]');
+            const input = document.getElementById('newsletterEmail');
             const email = (input?.value || '').trim();
             if (email) {
-                showToast(`Thank you! ✨ 10% coupon code sent to ${email}`);
+                showToast(`Thank you! ✨ 10% coupon code SINDHYAAZ10 sent to ${email}`);
                 input.value = '';
             }
         });

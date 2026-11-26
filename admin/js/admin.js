@@ -1,10 +1,20 @@
 const API_BASE = '/api';
 const UPLOADS_BASE = '/uploads';
+const TRANSPARENT_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
 
 // Utility Functions
 const utils = {
+    resolveImageUrl: (img) => {
+        if (!img) return TRANSPARENT_PIXEL;
+        const s = String(img).trim();
+        if (!s) return TRANSPARENT_PIXEL;
+        if (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('data:') || s.startsWith('/uploads/')) {
+            return s;
+        }
+        return `${UPLOADS_BASE}/${s.replace(/^\/+/, '')}`;
+    },
     formatCurrency: (amount) => {
-        return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(amount);
+        return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(Number(amount || 0));
     },
     formatDate: (dateString) => {
         return new Date(dateString).toLocaleDateString('en-IN', {
@@ -67,7 +77,7 @@ const auth = {
         localStorage.removeItem('adminToken');
         app.showView('login');
     },
-    fetch: async (url, options = {}) => {
+    fetch: async (url, options = {}, isRetry = false) => {
         const token = auth.getToken();
         const headers = {
             ...options.headers,
@@ -81,16 +91,21 @@ const auth = {
             const res = await fetch(`${API_BASE}${url}`, { ...options, headers });
             if (res.status === 401 || res.status === 403) {
                 auth.logout();
-                throw new Error('Unauthorized');
+                throw new Error('Session expired. Please login again.');
             }
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
-                throw new Error(err.message || 'API Error');
+                throw new Error(err.error || err.message || 'API Error');
             }
             const json = await res.json();
             return json.data !== undefined ? json.data : json;
         } catch (error) {
             console.error('Fetch error:', error);
+            if (!isRetry && error.message && (error.message.includes('Failed to fetch') || error.message.includes('NetworkError'))) {
+                utils.showToast('Server is waking up, retrying...', 'info');
+                await new Promise(r => setTimeout(r, 2500));
+                return await auth.fetch(url, options, true);
+            }
             throw error;
         }
     }
@@ -100,7 +115,9 @@ const auth = {
 const app = {
     currentView: null,
     categoriesList: [],
+    categoriesMap: {},
     uploadedImages: [], // temp array for product form
+    productPage: 1,
     
     init: () => {
         app.setupEventListeners();
@@ -125,7 +142,10 @@ const app = {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username: u, password: p })
                 });
-                if(!res.ok) throw new Error('Invalid credentials');
+                if(!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData.error || 'Invalid credentials');
+                }
                 const data = await res.json();
                 const token = data.data && data.data.token ? data.data.token : data.token;
                 if (!token) throw new Error('Invalid token returned');
@@ -133,7 +153,11 @@ const app = {
                 app.navigate('dashboard');
                 utils.showToast('Login successful', 'success');
             } catch (err) {
-                utils.showToast(err.message, 'error');
+                if (err.message && err.message.includes('Failed to fetch')) {
+                    utils.showToast('Server is starting up (Render free instance takes ~30s). Wait a moment and try again.', 'info');
+                } else {
+                    utils.showToast(err.message || 'Login failed', 'error');
+                }
             } finally {
                 utils.hideSpinner();
             }
@@ -274,7 +298,7 @@ const app = {
             const div = document.createElement('div');
             div.className = 'image-preview-item';
             div.innerHTML = `
-                <img src="${UPLOADS_BASE}/${img}" alt="preview">
+                <img src="${utils.resolveImageUrl(img)}" alt="preview">
                 <button type="button" class="remove-btn" onclick="app.removeImage(${index})">✕</button>
             `;
             grid.appendChild(div);
@@ -301,7 +325,7 @@ const app = {
         }
     },
 
-    navigate: (view, params = null) => {
+    navigate: async (view, params = null) => {
         if (!auth.isAuthenticated()) return auth.logout();
         
         app.currentView = view;
@@ -327,18 +351,21 @@ const app = {
 
         app.showView(view);
 
+        // Ensure categories list is loaded before product views/forms
+        if ((view === 'products' || view === 'product-form') && app.categoriesList.length === 0) {
+            await app.fetchCategoriesList();
+        }
+
         // Load data based on view
         if (view === 'dashboard') app.loadDashboard();
-        if (view === 'products') app.loadProducts();
+        if (view === 'products') {
+            app.productPage = 1;
+            app.loadProducts();
+        }
         if (view === 'product-form') app.loadProductForm(params);
         if (view === 'categories') app.loadCategories();
         if (view === 'orders') app.loadOrders();
         if (view === 'settings') app.loadSettings();
-
-        // Load categories list globally if empty
-        if ((view === 'products' || view === 'product-form') && app.categoriesList.length === 0) {
-            app.fetchCategoriesList();
-        }
     },
 
     // --- Dashboard ---
@@ -346,6 +373,26 @@ const app = {
         try {
             utils.showSpinner();
             const data = await auth.fetch('/dashboard/stats');
+
+            const pendingBadge = document.getElementById('pending-notif-badge');
+            if (pendingBadge) pendingBadge.textContent = data.pending_orders || 0;
+
+            const storageBanner = document.getElementById('storage-status-banner');
+            if (storageBanner && data.storage) {
+                if (data.storage.persistent) {
+                    storageBanner.innerHTML = `
+                        <div style="background:#ECFDF5; border:1px solid #A7F3D0; color:#065F46; padding:10px 14px; border-radius:8px; margin-bottom:16px; font-size:0.88rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                            <span>🟢 <strong>Database Status:</strong> Persistent Storage Active (${data.storage.engine.toUpperCase()}). All added products & uploaded images stay permanently.</span>
+                        </div>
+                    `;
+                } else {
+                    storageBanner.innerHTML = `
+                        <div style="background:#FEF3C7; border:1px solid #FDE68A; color:#92400E; padding:12px 16px; border-radius:8px; margin-bottom:16px; font-size:0.88rem; line-height:1.5;">
+                            ⚠️ <strong>Notice (Ephemeral Render Disk):</strong> Render Free Plan resets local SQLite files when the server restarts (~every 1–2 hrs). To keep newly added products forever, add a free PostgreSQL <code>DATABASE_URL</code> (e.g., Neon/Supabase) in Render Environment Variables or upgrade to Render Persistent Disk.
+                        </div>
+                    `;
+                }
+            }
             
             // Stats
             document.getElementById('dashboard-stats').innerHTML = `
@@ -384,13 +431,14 @@ const app = {
             tbody.innerHTML = '';
             if (data.recent_orders && data.recent_orders.length) {
                 data.recent_orders.forEach(o => {
+                    const st = o.order_status || 'Pending';
                     tbody.innerHTML += `
                         <tr>
                             <td>#${o.order_number || o.id}</td>
                             <td>${o.customer_name}</td>
                             <td>${o.phone || '-'}</td>
                             <td>${utils.formatCurrency(o.total)}</td>
-                            <td><span class="badge-status badge-${o.order_status.toLowerCase()}">${o.order_status}</span></td>
+                            <td><span class="badge-status badge-${st.toLowerCase()}">${st}</span></td>
                             <td>${utils.formatDate(o.created_at)}</td>
                         </tr>
                     `;
@@ -429,28 +477,32 @@ const app = {
         }
     },
 
-    loadProducts: async () => {
+    loadProducts: async (page = app.productPage || 1) => {
         try {
+            app.productPage = page;
             const search = document.getElementById('product-search').value;
             const category = document.getElementById('product-category-filter').value;
-            const query = new URLSearchParams({ search, category, limit: 20 }).toString();
+            const query = new URLSearchParams({ search, category, page: app.productPage, limit: 25 }).toString();
 
             utils.showSpinner();
             const data = await auth.fetch(`/products?${query}`);
             const products = data.products || data || [];
+            const totalPages = data.totalPages || 1;
+            const total = data.total || products.length;
 
             const tbody = document.getElementById('products-body');
             tbody.innerHTML = '';
 
             if (products.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No products found</td></tr>';
+                document.getElementById('products-pagination').innerHTML = '';
                 return;
             }
 
             products.forEach(p => {
-                const imgUrl = p.images && p.images[0] ? `${UPLOADS_BASE}/${p.images[0]}` : 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+                const imgUrl = p.images && p.images[0] ? utils.resolveImageUrl(p.images[0]) : TRANSPARENT_PIXEL;
                 const catName = app.categoriesList.find(c => c.id == p.category_id)?.name || p.category_name || '-';
-                const statusBadge = p.is_active ? '<span class="badge-status badge-active">Active</span>' : '<span class="badge-status badge-inactive">Inactive</span>';
+                const statusBadge = Number(p.is_active) !== 0 ? '<span class="badge-status badge-active">Active</span>' : '<span class="badge-status badge-inactive">Inactive</span>';
 
                 tbody.innerHTML += `
                     <tr>
@@ -468,6 +520,26 @@ const app = {
                     </tr>
                 `;
             });
+
+            // Render Pagination Controls
+            const pagEl = document.getElementById('products-pagination');
+            if (pagEl) {
+                if (totalPages > 1) {
+                    let pagHtml = `<div style="display:flex; justify-content:space-between; align-items:center; padding-top:1rem; flex-wrap:wrap; gap:8px;">
+                        <span style="font-size:0.85rem; color:var(--c-text-muted);">Showing page ${app.productPage} of ${totalPages} (${total} products)</span>
+                        <div style="display:flex; gap:6px;">
+                            <button class="btn btn-sm btn-outline" ${app.productPage <= 1 ? 'disabled' : ''} onclick="app.loadProducts(${app.productPage - 1})">← Prev</button>`;
+                    for (let i = 1; i <= totalPages; i++) {
+                        pagHtml += `<button class="btn btn-sm ${i === app.productPage ? 'btn-primary' : 'btn-outline'}" onclick="app.loadProducts(${i})">${i}</button>`;
+                    }
+                    pagHtml += `<button class="btn btn-sm btn-outline" ${app.productPage >= totalPages ? 'disabled' : ''} onclick="app.loadProducts(${app.productPage + 1})">Next →</button>
+                        </div>
+                    </div>`;
+                    pagEl.innerHTML = pagHtml;
+                } else {
+                    pagEl.innerHTML = `<div style="padding-top:0.75rem; font-size:0.85rem; color:var(--c-text-muted);">Total ${total} products</div>`;
+                }
+            }
         } catch (err) {
             utils.showToast('Failed to load products', 'error');
         } finally {
@@ -499,6 +571,10 @@ const app = {
         app.renderImagePreviews();
         document.getElementById('product-id').value = '';
 
+        if (app.categoriesList.length === 0) {
+            await app.fetchCategoriesList();
+        }
+
         if (id) {
             document.getElementById('product-form-title').textContent = 'Edit Product';
             try {
@@ -507,14 +583,14 @@ const app = {
                 
                 document.getElementById('product-id').value = p.id;
                 document.getElementById('product-name').value = p.name || '';
-                document.getElementById('product-category').value = p.category_id || p.category_name || '';
+                document.getElementById('product-category').value = p.category_id ? String(p.category_id) : '';
                 document.getElementById('product-description').value = p.description || '';
                 document.getElementById('product-price').value = p.price || '';
                 document.getElementById('product-compare-price').value = p.compare_price || '';
-                document.getElementById('product-stock').value = p.stock || 0;
+                document.getElementById('product-stock').value = p.stock ?? 0;
                 document.getElementById('product-badge').value = p.badge || '';
-                document.getElementById('product-featured').checked = p.is_featured || false;
-                document.getElementById('product-active').checked = p.is_active !== false;
+                document.getElementById('product-featured').checked = Boolean(Number(p.is_featured));
+                document.getElementById('product-active').checked = p.is_active === undefined ? true : Boolean(Number(p.is_active));
 
                 if (p.images && Array.isArray(p.images)) {
                     app.uploadedImages = [...p.images];
@@ -535,16 +611,17 @@ const app = {
 
     saveProduct: async () => {
         const id = document.getElementById('product-id').value;
+        const catVal = document.getElementById('product-category').value;
         const payload = {
-            name: document.getElementById('product-name').value,
-            category_id: document.getElementById('product-category').value,
-            description: document.getElementById('product-description').value,
+            name: document.getElementById('product-name').value.trim(),
+            category_id: catVal ? parseInt(catVal, 10) : null,
+            description: document.getElementById('product-description').value.trim(),
             price: parseFloat(document.getElementById('product-price').value),
             compare_price: parseFloat(document.getElementById('product-compare-price').value) || null,
-            stock: parseInt(document.getElementById('product-stock').value, 10),
-            badge: document.getElementById('product-badge').value,
-            is_featured: document.getElementById('product-featured').checked,
-            is_active: document.getElementById('product-active').checked,
+            stock: parseInt(document.getElementById('product-stock').value, 10) || 0,
+            badge: document.getElementById('product-badge').value || null,
+            is_featured: document.getElementById('product-featured').checked ? 1 : 0,
+            is_active: document.getElementById('product-active').checked ? 1 : 0,
             images: app.uploadedImages
         };
 
@@ -565,7 +642,7 @@ const app = {
             }
             app.navigate('products');
         } catch (err) {
-            utils.showToast('Failed to save product', 'error');
+            utils.showToast(err.message || 'Failed to save product', 'error');
         } finally {
             utils.hideSpinner();
         }
@@ -576,11 +653,12 @@ const app = {
         try {
             const search = document.getElementById('category-search').value;
             utils.showSpinner();
-            const data = await auth.fetch(`/categories?search=${search}`);
+            const data = await auth.fetch(`/categories?search=${encodeURIComponent(search)}`);
             const categories = data.categories || data || [];
 
             const grid = document.getElementById('categories-grid');
             grid.innerHTML = '';
+            app.categoriesMap = {};
 
             if (categories.length === 0) {
                 grid.innerHTML = '<div class="empty-state">No categories found</div>';
@@ -588,20 +666,20 @@ const app = {
             }
 
             categories.forEach(c => {
-                const imgUrl = c.image ? `${UPLOADS_BASE}/${c.image}` : 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+                app.categoriesMap[c.id] = c;
+                const imgUrl = c.image ? utils.resolveImageUrl(c.image) : TRANSPARENT_PIXEL;
                 grid.innerHTML += `
                     <div class="category-card">
                         <img src="${imgUrl}" alt="">
                         <h4>${c.name}</h4>
                         <p class="text-muted" style="font-size:0.8rem">${c.product_count || 0} products</p>
                         <div class="category-actions">
-                            <button class="btn btn-sm btn-outline" onclick='app.editCategory(${JSON.stringify(c)})'>Edit</button>
+                            <button class="btn btn-sm btn-outline" onclick="app.editCategoryById(${c.id})">Edit</button>
                             <button class="btn btn-sm btn-danger" onclick="app.deleteCategory(${c.id})">Delete</button>
                         </div>
                     </div>
                 `;
             });
-            // Update global list
             app.categoriesList = categories;
         } catch (err) {
             utils.showToast('Failed to load categories', 'error');
@@ -614,6 +692,11 @@ const app = {
         document.getElementById('category-modal').classList.add('hidden');
     },
 
+    editCategoryById: (id) => {
+        const c = app.categoriesMap[id];
+        if (c) app.editCategory(c);
+    },
+
     editCategory: (c) => {
         document.getElementById('category-id').value = c.id;
         document.getElementById('category-name').value = c.name;
@@ -621,7 +704,7 @@ const app = {
         
         const preview = document.getElementById('category-image-preview');
         if (c.image) {
-            preview.style.backgroundImage = `url(${UPLOADS_BASE}/${c.image})`;
+            preview.style.backgroundImage = `url(${utils.resolveImageUrl(c.image)})`;
         } else {
             preview.style.backgroundImage = 'none';
         }
@@ -698,12 +781,13 @@ const app = {
             }
 
             orders.forEach(o => {
+                const itemsArr = Array.isArray(o.items) ? o.items : (typeof o.items === 'string' ? JSON.parse(o.items || '[]') : []);
                 tbody.innerHTML += `
                     <tr>
                         <td>#${o.order_number || o.id}</td>
                         <td>${o.customer_name}</td>
                         <td>${o.phone || '-'}</td>
-                        <td>${JSON.parse(o.items || '[]').length}</td>
+                        <td>${itemsArr.length}</td>
                         <td>${utils.formatCurrency(o.total)}</td>
                         <td>
                             <select onchange="app.updateOrderStatus(${o.id}, this.value)" class="badge-status badge-${(o.order_status || 'pending').toLowerCase()}">
@@ -760,7 +844,7 @@ const app = {
             const cleanPhone = (o.phone || '').replace(/[^0-9]/g, '');
 
             const html = `
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; margin-bottom: 1.5rem;">
+                <div class="admin-order-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; margin-bottom: 1.5rem;">
                     <div>
                         <h4 style="margin-bottom:6px; color:#374151;">Customer Information</h4>
                         <p style="margin:0 0 6px 0;">
@@ -822,7 +906,7 @@ const app = {
                 <!-- Live Fulfillment & Tracking Section -->
                 <div style="background:#f8fafc; border:1px solid #e2e8f0; padding:1rem; border-radius:6px;">
                     <h4 style="margin:0 0 10px 0; color:#334155;">Live Order Tracking & Dispatch Control</h4>
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:10px;">
+                    <div class="admin-order-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:10px;">
                         <div>
                             <label style="display:block; font-size:0.82rem; font-weight:600; margin-bottom:4px; color:#475569;">
                                 Order Status (Controls Customer Tracking Stepper)
@@ -923,7 +1007,7 @@ const app = {
             utils.showSpinner();
             const s = await auth.fetch('/settings');
             
-            document.getElementById('setting-shop-name').value = s.shopName || '';
+            document.getElementById('setting-shop-name').value = s.shop_name || s.shopName || '';
             document.getElementById('setting-announcement').value = s.announcement || '';
             document.getElementById('setting-whatsapp').value = s.whatsapp || '';
             document.getElementById('setting-phone').value = s.phone || '';
@@ -936,6 +1020,27 @@ const app = {
             
         } catch (err) {
             utils.showToast('Failed to load settings', 'error');
+        } finally {
+            utils.hideSpinner();
+        }
+    },
+
+    downloadBackup: async () => {
+        try {
+            utils.showSpinner();
+            const data = await auth.fetch('/settings/backup');
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `sindhyaaz-backup-${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            utils.showToast('Store backup downloaded!', 'success');
+        } catch (err) {
+            utils.showToast('Failed to download backup', 'error');
         } finally {
             utils.hideSpinner();
         }
